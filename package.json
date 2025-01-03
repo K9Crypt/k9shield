@@ -1,0 +1,61 @@
+{
+  "name": "k9shield",
+  "version": "1.0.0",
+  "description": "Comprehensive security middleware for Node.js applications, providing robust protection against web threats including DDoS, rate limiting, and suspicious pattern detection",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "security",
+    "middleware",
+    "express",
+    "ddos-protection",
+    "rate-limiting",
+    "web-security",
+    "nodejs",
+    "k9crypt",
+    "firewall",
+    "waf",
+    "xss-protection",
+    "sql-injection",
+    "csrf",
+    "security-headers",
+    "ip-blocking",
+    "blacklist",
+    "whitelist",
+    "throttling",
+    "brute-force-protection",
+    "input-validation",
+    "request-filtering",
+    "attack-prevention",
+    "security-middleware",
+    "express-middleware",
+    "http-security",
+    "api-security",
+    "web-protection",
+    "security-layer",
+    "access-control",
+    "threat-detection",
+    "security-monitoring",
+    "request-validation"
+  ],
+  "author": {
+    "name": "K9Crypt Team",
+    "email": "hi@k9crypt.xyz",
+    "url": "https://k9crypt.xyz"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/k9crypt/k9shield"
+  },
+  "homepage": "https://k9crypt.xyz/products/k9shield",
+  "bugs": {
+    "url": "https://github.com/k9crypt/k9shield/issues",
+    "email": "hi@k9crypt.xyz"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ipaddr.js": "^2.2.0"
+  }
+}
