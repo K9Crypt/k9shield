@@ -41,7 +41,8 @@ const defaultConfig = {
             'payloadTooLarge': { status: 413, message: 'Payload too large' },
             'suspiciousRequest': { status: 403, message: 'Suspicious request pattern detected' },
             'rateLimitExceeded': { status: 429, message: 'Too many requests' },
-            'permanentlyBlocked': { status: 403, message: 'Permanently blocked due to multiple violations' }
+            'permanentlyBlocked': { status: 403, message: 'Permanently blocked due to multiple violations' },
+            'ddosAttack': { status: 429, message: 'DDoS attack detected - Access temporarily blocked' }
         }
     },
     bypassRoutes: []

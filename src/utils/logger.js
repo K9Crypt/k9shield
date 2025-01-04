@@ -27,14 +27,14 @@ class Logger {
             message,
             method: req ? req.method : null,
             path: req ? req.path : null,
-            userAgent: req ? req.headers['user-agent'] : null,
-            referer: req ? req.headers['referer'] : null
+            userAgent: req && req.headers ? req.headers['user-agent'] : null,
+            referer: req && req.headers ? req.headers['referer'] : null
         };
 
         setImmediate(() => {
             this.logs.push(logEntry);
             
-            console.log(`[K9Shield] ${logEntry.timestamp} - ${type}: ${message} ${req ? `(${req.method} ${req.path})` : ''} ${req && req.headers['user-agent'] ? `User-Agent: ${req.headers['user-agent']}` : ''} ${req && req.headers['referer'] ? `Referer: ${req.headers['referer']}` : ''}`);
+            console.log(`[K9Shield] ${logEntry.timestamp} - ${type}: ${message}${req && req.method && req.path ? ` (${req.method} ${req.path})` : ''}${req && req.headers && req.headers['user-agent'] ? ` User-Agent: ${req.headers['user-agent']}` : ''}${req && req.headers && req.headers['referer'] ? ` Referer: ${req.headers['referer']}` : ''}`);
             
             this.rotateAndArchiveLogs().catch(error => {
                 console.error('Log rotation error:', error);

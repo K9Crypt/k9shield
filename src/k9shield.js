@@ -6,6 +6,9 @@ const RateLimiter = require('./core/rateLimiter');
 const Security = require('./core/security');
 const HeaderManager = require('./middleware/headers');
 const ConfigValidator = require('./core/validator');
+const semver = require('semver');
+const https = require('https');
+const packageJson = require('../package.json');
 
 class K9Shield {
     constructor(config = {}) {
@@ -20,10 +23,56 @@ class K9Shield {
             this.rateLimiter = new RateLimiter(this.config, this.logger);
             this.headerManager = new HeaderManager(this.config, this.logger);
             
+            this.currentVersion = packageJson.version;
+            this.checkForUpdates();
+            
             this.logger.log('info', 'K9Shield initialized successfully');
         } catch (error) {
             console.error('K9Shield initialization failed:', error.message);
             throw error;
+        }
+    }
+
+    checkForUpdates() {
+        try {
+            https.get('https://registry.npmjs.org/k9shield', (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                
+                res.on('end', () => {
+                    try {
+                        const npmData = JSON.parse(data);
+                        const latestVersion = npmData['dist-tags'].latest;
+                        
+                        if (semver.gt(latestVersion, this.currentVersion)) {
+                            const updateMessage = `
+╔══════════════════════════════════════════════════════════════╗
+║                   K9SHIELD UPDATE AVAILABLE                  ║
+╠══════════════════════════════════════════════════════════════╣
+║ Current Version: ${this.currentVersion}                      ║
+║ Latest Version:  ${latestVersion}                            ║
+║                                                              ║
+║ Please update to the latest version:                         ║
+║ npm install k9shield@latest                                  ║
+║                                                              ║
+║ Security and performance improvements are available!         ║
+╚══════════════════════════════════════════════════════════════╝
+`;
+                            console.warn(updateMessage);
+                            
+                            this.logger.log('warning', `K9Shield update available: ${latestVersion}`);
+                        }
+                    } catch (parseError) {
+                        this.logger.log('error', `Error parsing NPM registry data: ${parseError.message}`);
+                    }
+                });
+            }).on('error', (err) => {
+                this.logger.log('error', `Error checking for updates: ${err.message}`);
+            });
+        } catch (error) {
+            this.logger.log('error', `Unexpected error in update check: ${error.message}`);
         }
     }
 

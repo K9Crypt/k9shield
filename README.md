@@ -4,6 +4,53 @@
 
 K9Shield is a comprehensive security middleware for Node.js applications, providing robust protection against various web security threats. It offers advanced features like DDoS protection, rate limiting, IP management, and security headers management.
 
+## Updates
+
+### Code Cleanup and Optimization (January 2024)
+
+#### Source Code Improvements
+- Simplified configuration structures
+- Enhanced code readability
+- Removed redundant logging and configuration details
+
+#### DDoS Protection Enhancements
+- Improved request pattern anomaly detection
+- More robust IP blocking mechanism
+- Enhanced logging for attack detection
+- Refined anomaly scoring algorithm
+
+#### Logging Improvements
+- More concise log message formatting
+- Removed unnecessary log details
+- Added more context to security-related logs
+- Improved error handling in logging system
+
+#### Configuration Simplification
+- Reduced default configuration complexity
+- Made configuration more minimal and focused
+- Removed unnecessary default settings
+- Improved configuration validation
+
+#### Performance Optimizations
+- Streamlined request processing
+- More efficient IP and request tracking
+- Reduced overhead in security checks
+- Optimized memory usage in tracking mechanisms
+
+#### Security Enhancements
+- More granular IP management
+- Improved request pattern detection
+- Enhanced rate limiting mechanisms
+- More precise DDoS attack prevention strategies
+
+#### Debugging and Error Handling
+- More informative error messages
+- Better error tracking
+- Improved error response generation
+- Enhanced debugging capabilities
+
+*Note: These updates focus on improving code quality, performance, and maintainability while preserving the core security features of K9Shield.*
+
 ## Table of Contents
 - [Features](#features)
 - [Installation](#installation)
@@ -87,7 +134,7 @@ npm install k9shield
 
 ## Quick Start
 
-Basic implementation with Express:
+### Basic Express Integration
 
 ```javascript
 const express = require('express');
@@ -96,7 +143,162 @@ const K9Shield = require('k9shield');
 const app = express();
 const shield = new K9Shield();
 
+// Protect all routes
 app.use(shield.protect());
+
+app.get('/', (req, res) => {
+    res.json({ message: 'A secure endpoint' });
+});
+
+app.listen(3000, () => {
+    console.log('Server running securely');
+});
+```
+
+### Detailed Security Configuration
+
+```javascript
+const shield = new K9Shield({
+    rateLimiting: {
+        enabled: true,
+        default: {
+            maxRequests: 10,     // 10 requests per minute
+            timeWindow: 60000,   // 1 minute
+            banDuration: 300000  // 5 minutes ban
+        },
+        routes: {
+            '/api/sensitive-endpoint': {
+                'POST': { 
+                    maxRequests: 3,      // Stricter control for sensitive endpoint
+                    timeWindow: 60000,   // 1 minute
+                    banDuration: 600000  // 10 minutes ban
+                }
+            }
+        }
+    },
+    security: {
+        maxBodySize: 1024 * 100,  // 100KB payload limit
+        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE'],
+        userAgentBlacklist: ['bad-bot', 'malicious-crawler']
+    },
+    ddosProtection: {
+        enabled: true,
+        config: {
+            maxConnections: 50,
+            blockDuration: 300,
+            requestThreshold: 30,
+            rateLimitByPath: {
+                '/api/*': 20,    // Special limit for API routes
+                '*': 50           // General limit for all routes
+            }
+        }
+    }
+});
+```
+
+### IP Management Examples
+
+```javascript
+// Block a specific IP
+shield.blockIP('192.168.1.100');
+
+// Whitelist an IP
+shield.whitelistIP('10.0.0.1');
+
+// Unblock a previously blocked IP
+shield.unblockIP('192.168.1.100');
+
+// Remove an IP from whitelist
+shield.unwhitelistIP('10.0.0.1');
+```
+
+### Adding Custom Security Patterns
+
+```javascript
+// Custom patterns for SQL Injection and XSS
+shield.addSuspiciousPattern(/SELECT.*FROM/i);
+shield.addSuspiciousPattern(/<script>|javascript:/i);
+```
+
+### Advanced Error Handling
+
+```javascript
+const shield = new K9Shield({
+    errorHandling: {
+        includeErrorDetails: true,
+        customHandlers: {
+            // Custom response for rate limit exceeded
+            'rateLimitExceeded': (res, data) => {
+                res.status(429).json({
+                    message: 'Too many requests',
+                    retryAfter: data.retryAfter,
+                    limit: data.limit
+                });
+            },
+            // Custom response for DDoS attack
+            'ddosAttack': (res) => {
+                res.status(403).json({
+                    message: 'Suspicious traffic detected',
+                    action: 'Access denied'
+                });
+            }
+        }
+    }
+});
+```
+
+### Logging and Monitoring
+
+```javascript
+// Get all log records
+const logs = shield.getLogs();
+
+// Get archived log records
+const archivedLogs = shield.getArchivedLogs();
+
+// Reset all settings and statistics
+shield.reset();
+```
+
+### Test Environment Configuration
+
+```javascript
+// More flexible settings for development environment
+process.env.NODE_ENV = 'development';
+
+const shield = new K9Shield({
+    rateLimiting: { enabled: false },  // Rate limit disabled in development
+    ddosProtection: { enabled: false } // DDoS protection disabled
+});
+```
+
+### Production Environment Configuration
+
+```javascript
+// Strict security settings for production
+process.env.NODE_ENV = 'production';
+
+const shield = new K9Shield({
+    rateLimiting: {
+        enabled: true,
+        default: { maxRequests: 100, timeWindow: 60000 }
+    },
+    security: {
+        maxBodySize: 1024 * 1024,  // 1MB
+        allowPrivateIPs: false
+    },
+    ddosProtection: {
+        enabled: true,
+        config: {
+            maxConnections: 200,
+            blockDuration: 1800000  // 30 minutes block
+        }
+    },
+    logging: {
+        level: 'warning',  // Log only critical warnings
+        maxLogSize: 10000  // More log storage
+    }
+});
 ```
 
 ## Core Components

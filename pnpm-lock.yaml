@@ -8,16 +8,43 @@ importers:
 
   .:
     dependencies:
+      crypto:
+        specifier: ^1.0.1
+        version: 1.0.1
+      https:
+        specifier: ^1.0.0
+        version: 1.0.0
       ipaddr.js:
         specifier: ^2.2.0
         version: 2.2.0
+      semver:
+        specifier: ^7.6.3
+        version: 7.6.3
 
 packages:
+
+  crypto@1.0.1:
+    resolution: {integrity: sha512-VxBKmeNcqQdiUQUW2Tzq0t377b54N2bMtXO/qiLa+6eRRmmC4qT3D4OnTGoT/U6O9aklQ/jTwbOtRMTTY8G0Ig==}
+    deprecated: This package is no longer supported. It's now a built-in Node module. If you've depended on crypto, you should switch to the one that's built-in.
+
+  https@1.0.0:
+    resolution: {integrity: sha512-4EC57ddXrkaF0x83Oj8sM6SLQHAWXw90Skqu2M4AEWENZ3F02dFJE/GARA8igO79tcgYqGrD7ae4f5L3um2lgg==}
 
   ipaddr.js@2.2.0:
     resolution: {integrity: sha512-Ag3wB2o37wslZS19hZqorUnrnzSkpOVy+IiiDEiTqNubEYpYuHWIf6K4psgN2ZWKExS4xhVCrRVfb/wfW8fWJA==}
     engines: {node: '>= 10'}
 
+  semver@7.6.3:
+    resolution: {integrity: sha512-oVekP1cKtI+CTDvHWYFUcMtsK/00wmAEfyqKfNdARm8u1wNVhSgaX7A8d4UuIlUI5e84iEwOhs7ZPYRmzU9U6A==}
+    engines: {node: '>=10'}
+    hasBin: true
+
 snapshots:
 
+  crypto@1.0.1: {}
+
+  https@1.0.0: {}
+
   ipaddr.js@2.2.0: {}
+
+  semver@7.6.3: {}
