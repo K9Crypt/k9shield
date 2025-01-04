@@ -1,6 +1,6 @@
 {
   "name": "k9shield",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Comprehensive security middleware for Node.js applications, providing robust protection against web threats including DDoS, rate limiting, and suspicious pattern detection",
   "main": "index.js",
   "scripts": {

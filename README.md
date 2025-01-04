@@ -6,7 +6,7 @@ K9Shield is a comprehensive security middleware for Node.js applications, provid
 
 ## Updates
 
-### Code Cleanup and Optimization (January 2024)
+### Code Cleanup and Optimization (January 2025)
 
 #### Source Code Improvements
 - Simplified configuration structures
