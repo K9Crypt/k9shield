@@ -350,11 +350,16 @@ class DDoSProtection {
 
     cleanupData() {
         try {
+            const ddosConfig = this.config?.ddosProtection?.config || {
+                timeWindow: 60000,
+                blockDuration: 3600000
+            };
+
             const now = Date.now();
-            const timeWindow = this.config.ddosProtection.config.timeWindow;
+            const timeWindow = ddosConfig.timeWindow || 60000;
 
             for (const [ip, stats] of this.connectionStats) {
-                if (now - stats.lastRequest > timeWindow * 2) {
+                if (now - (stats.lastRequest || now) > timeWindow * 2) {
                     this.connectionStats.delete(ip);
                     this.requestPatterns.delete(ip);
                     this.anomalyScores.delete(ip);
@@ -377,7 +382,11 @@ class DDoSProtection {
 
             this.lastCleanup = now;
         } catch (error) {
-            this.logger.log('error', `Error cleaning up data: ${error.message}`);
+            this.logger.log('error', `Error cleaning up data: ${error.message}`, {
+                configExists: !!this.config,
+                ddosConfigExists: !!this.config?.ddosProtection,
+                stackTrace: error.stack
+            });
         }
     }
 

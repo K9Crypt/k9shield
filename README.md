@@ -6,50 +6,46 @@ K9Shield is a comprehensive security middleware for Node.js applications, provid
 
 ## Updates
 
-### Code Cleanup and Optimization (January 2025)
+### Data Protection Enhancements (January 2025)
+- Added advanced data loss prevention module
+- Implemented sensitive data detection and masking
+- Integrated k9crypt for secure data encryption
+- Added custom pattern support for sensitive data
+- Enhanced data protection with regex-based detection
+- Implemented async encryption and decryption methods
+- Added comprehensive data masking techniques for various sensitive information types
 
-#### Source Code Improvements
-- Simplified configuration structures
-- Enhanced code readability
-- Removed redundant logging and configuration details
+#### Usage Example
 
-#### DDoS Protection Enhancements
-- Improved request pattern anomaly detection
-- More robust IP blocking mechanism
-- Enhanced logging for attack detection
-- Refined anomaly scoring algorithm
+```javascript
+const shield = new K9Shield();
 
-#### Logging Improvements
-- More concise log message formatting
-- Removed unnecessary log details
-- Added more context to security-related logs
-- Improved error handling in logging system
+// Optional: Scan for sensitive data
+const sensitiveDataResult = shield.scanForSensitiveData('Credit Card: 4111-1111-1111-1111');
+console.log(sensitiveDataResult);
+// Output: { hasSensitiveData: true, detectedData: { creditCard: ['4111-1111-1111-1111'] } }
 
-#### Configuration Simplification
-- Reduced default configuration complexity
-- Made configuration more minimal and focused
-- Removed unnecessary default settings
-- Improved configuration validation
+// Optional: Mask sensitive data
+const maskedData = shield.maskSensitiveData('Email: john.doe@example.com');
+console.log(maskedData);
+// Output: 'Email: jo****@example.com'
 
-#### Performance Optimizations
-- Streamlined request processing
-- More efficient IP and request tracking
-- Reduced overhead in security checks
-- Optimized memory usage in tracking mechanisms
+// Optional: Encrypt sensitive data
+const encryptedData = await shield.encryptSensitiveData('Secret Information');
+const decryptedData = await shield.decryptSensitiveData(encryptedData);
 
-#### Security Enhancements
-- More granular IP management
-- Improved request pattern detection
-- Enhanced rate limiting mechanisms
-- More precise DDoS attack prevention strategies
+// Optional: Add custom sensitive pattern
+shield.addCustomSensitivePattern('customId', /\bCUST-\d{6}\b/);
+```
 
-#### Debugging and Error Handling
-- More informative error messages
-- Better error tracking
-- Improved error response generation
-- Enhanced debugging capabilities
+#### Module Status
+- **Completely Optional**: The data loss prevention module is not mandatory
+- **Can be Disabled**: No impact on core security features
+- **Modular Design**: Use only the features you need
+- **Performance Overhead**: Minimal additional processing
+- **Recommended for**: Applications handling sensitive personal or financial data
 
-*Note: These updates focus on improving code quality, performance, and maintainability while preserving the core security features of K9Shield.*
+*Note: While optional, this module provides an additional layer of data protection for applications requiring advanced data handling.*
 
 ## Table of Contents
 - [Features](#features)

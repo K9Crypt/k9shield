@@ -9,6 +9,7 @@ const ConfigValidator = require('./core/validator');
 const semver = require('semver');
 const https = require('https');
 const packageJson = require('../package.json');
+const DataLossPreventionManager = require('./core/dataLossProtection');
 
 class K9Shield {
     constructor(config = {}) {
@@ -22,6 +23,7 @@ class K9Shield {
             this.ddosProtection = new DDoSProtection(this.config, this.logger);
             this.rateLimiter = new RateLimiter(this.config, this.logger);
             this.headerManager = new HeaderManager(this.config, this.logger);
+            this.dataLossPreventionManager = new DataLossPreventionManager(this.config, this.logger);
             
             this.currentVersion = packageJson.version;
             this.checkForUpdates();
@@ -319,6 +321,51 @@ class K9Shield {
             this.logger.log('info', 'K9Shield reset successfully');
         } catch (error) {
             this.logger.log('error', 'Error resetting K9Shield', { error: error.message });
+            throw error;
+        }
+    }
+
+    scanForSensitiveData(data) {
+        try {
+            return this.dataLossPreventionManager.scanForSensitiveData(data);
+        } catch (error) {
+            this.logger.log('error', 'Sensitive data scan failed', { error: error.message });
+            throw error;
+        }
+    }
+
+    maskSensitiveData(data) {
+        try {
+            return this.dataLossPreventionManager.maskSensitiveData(data);
+        } catch (error) {
+            this.logger.log('error', 'Sensitive data masking failed', { error: error.message });
+            throw error;
+        }
+    }
+
+    encryptSensitiveData(data) {
+        try {
+            return this.dataLossPreventionManager.encryptSensitiveData(data);
+        } catch (error) {
+            this.logger.log('error', 'Sensitive data encryption failed', { error: error.message });
+            throw error;
+        }
+    }
+
+    decryptSensitiveData(encryptedData) {
+        try {
+            return this.dataLossPreventionManager.decryptSensitiveData(encryptedData);
+        } catch (error) {
+            this.logger.log('error', 'Sensitive data decryption failed', { error: error.message });
+            throw error;
+        }
+    }
+
+    addCustomSensitivePattern(type, pattern) {
+        try {
+            this.dataLossPreventionManager.addCustomSensitivePattern(type, pattern);
+        } catch (error) {
+            this.logger.log('error', 'Adding custom sensitive pattern failed', { error: error.message });
             throw error;
         }
     }
