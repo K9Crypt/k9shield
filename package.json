@@ -1,7 +1,7 @@
 {
   "name": "k9shield",
-  "version": "1.0.3",
-  "description": "Comprehensive security middleware for Node.js applications, providing robust protection against web threats including DDoS, rate limiting, and suspicious pattern detection",
+  "version": "1.0.4",
+  "description": "An Express.js middleware library providing military-grade web application security.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -59,7 +59,7 @@
     "crypto": "^1.0.1",
     "https": "^1.0.0",
     "ipaddr.js": "^2.2.0",
-    "k9crypt": "^1.0.8",
-    "semver": "^7.6.3"
+    "k9crypt": "^1.1.6",
+    "semver": "^7.7.2"
   }
 }

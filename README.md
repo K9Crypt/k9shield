@@ -1,622 +1,768 @@
-![Banner](https://www.upload.ee/image/17590030/k9shield.png)
+![Banner](https://www.upload.ee/image/18524137/k9shield-banner.jpeg)
 
 # K9Shield
 
-K9Shield is a comprehensive security middleware for Node.js applications, providing robust protection against various web security threats. It offers advanced features like DDoS protection, rate limiting, IP management, and security headers management.
+Robust and flexible Node.js middleware designed to protect your web applications from a wide range of threats, including DDoS attacks, brute-force attempts, and malicious traffic. With its advanced policy engine, customizable security rules, and comprehensive logging capabilities, K9Shield empowers developers to implement enterprise-grade security measures with ease.
 
-## Updates
-
-### Data Protection Enhancements (January 2025)
-- Added advanced data loss prevention module
-- Implemented sensitive data detection and masking
-- Integrated k9crypt for secure data encryption
-- Added custom pattern support for sensitive data
-- Enhanced data protection with regex-based detection
-- Implemented async encryption and decryption methods
-- Added comprehensive data masking techniques for various sensitive information types
-
-#### Usage Example
-
-```javascript
-const shield = new K9Shield();
-
-// Optional: Scan for sensitive data
-const sensitiveDataResult = shield.scanForSensitiveData('Credit Card: 4111-1111-1111-1111');
-console.log(sensitiveDataResult);
-// Output: { hasSensitiveData: true, detectedData: { creditCard: ['4111-1111-1111-1111'] } }
-
-// Optional: Mask sensitive data
-const maskedData = shield.maskSensitiveData('Email: john.doe@example.com');
-console.log(maskedData);
-// Output: 'Email: jo****@example.com'
-
-// Optional: Encrypt sensitive data
-const encryptedData = await shield.encryptSensitiveData('Secret Information');
-const decryptedData = await shield.decryptSensitiveData(encryptedData);
-
-// Optional: Add custom sensitive pattern
-shield.addCustomSensitivePattern('customId', /\bCUST-\d{6}\b/);
-```
-
-#### Module Status
-- **Completely Optional**: The data loss prevention module is not mandatory
-- **Can be Disabled**: No impact on core security features
-- **Modular Design**: Use only the features you need
-- **Performance Overhead**: Minimal additional processing
-- **Recommended for**: Applications handling sensitive personal or financial data
-
-*Note: While optional, this module provides an additional layer of data protection for applications requiring advanced data handling.*
-
-## Table of Contents
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Components](#core-components)
-- [Configuration](#configuration)
-- [Security Features](#security-features)
-- [API Reference](#api-reference)
-- [Testing](#testing)
-- [Examples](#examples)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Features
-
-### Core Security Features
-- **DDoS Protection**
-  - Progressive penalty system
-  - Connection tracking
-  - Burst detection
-  - Path-based rate limiting
-  - Configurable thresholds and block durations
-
-- **Rate Limiting**
-  - Route-specific limits
-  - Flexible time windows
-  - Throttling support
-  - Ban duration management
-  - Distributed system support
-
-- **IP Management**
-  - CIDR notation support
-  - IPv6 support with IPv4 mapping
-  - Private IP detection
-  - Whitelist/Blacklist functionality
-  - Proxy support
-
-- **Request Validation**
-  - Method validation
-  - Payload size limits
-  - Header validation
-  - Pattern detection (SQL Injection, XSS, Path Traversal)
-  - User Agent and Referer filtering
-
-### Advanced Security
-- **Security Headers**
-  - Content Security Policy (CSP)
-  - Permissions Policy
-  - HSTS support
-  - XSS protection
-  - Frame options
-  - Content type options
-
-- **Pattern Detection**
-  - SQL Injection patterns
-  - XSS patterns
-  - Path traversal attempts
-  - Custom pattern support
-  - Regular expression based detection
-
-### Monitoring & Logging
-- **Logging System**
-  - Multiple log levels
-  - Automatic rotation
-  - Archive management
-  - Performance metrics
-  - Security event tracking
-
-- **Request Tracking**
-  - IP tracking
-  - Request duration
-  - Path monitoring
-  - Error logging
-  - Detailed request information
-
-## Installation
-
-```bash
-npm install k9shield
-```
-
-## Quick Start
-
-### Basic Express Integration
+## 🚀 Quick Start
 
 ```javascript
 const express = require('express');
 const K9Shield = require('k9shield');
 
 const app = express();
-const shield = new K9Shield();
 
-// Protect all routes
+// Initialize K9Shield with basic configuration
+const shield = new K9Shield({
+  security: {
+    allowPrivateIPs: true // Allow localhost for development
+  },
+  rateLimiting: {
+    enabled: true,
+    default: {
+      maxRequests: 100,
+      timeWindow: 60000 // 1 minute
+    }
+  },
+  logging: {
+    enable: true,
+    level: 'info'
+  }
+});
+
+// Apply K9Shield protection to all routes
 app.use(shield.protect());
 
+// Your application routes
 app.get('/', (req, res) => {
-    res.json({ message: 'A secure endpoint' });
+  res.json({ message: 'Protected by K9Shield', ip: req.ip });
 });
 
 app.listen(3000, () => {
-    console.log('Server running securely');
+  console.log('Server running with K9Shield protection on port 3000');
 });
 ```
 
-### Detailed Security Configuration
+## 📋 Table of Contents
+
+- [Installation](#installation)
+- [Policy Engine Architecture](#policy-engine-architecture)
+- [Configuration Guide](#configuration-guide)
+- [Security Features](#security-features)
+- [Usage Examples](#usage-examples)
+- [API Reference](#api-reference)
+- [Custom Rules](#custom-rules)
+- [Testing](#testing)
+- [Best Practices](#best-practices)
+- [License](#license)
+
+## 📦 Installation
+
+```bash
+npm install k9shield
+```
+
+## 🧠 Policy Engine Architecture
+
+K9Shield v2.0 introduces a revolutionary **Security Policy Engine** that acts as the central brain of your application's security. This engine evaluates every incoming request through a series of prioritized security rules.
+
+### How It Works
+
+1. **Rule-Based System**: Each security check (blacklist, whitelist, DDoS, rate limiting) is implemented as an independent rule
+2. **Priority-Based Execution**: Rules are executed in order of priority (200 = highest, 0 = lowest)
+3. **Centralized Decision Making**: All security decisions are made through a single, coherent engine
+4. **Modular Architecture**: Easy to add new security rules without modifying core logic
+
+### Built-in Security Rules
+
+| Rule Name              | Priority | Purpose                                         |
+| ---------------------- | -------- | ----------------------------------------------- |
+| **WhitelistRule**      | 200      | Allow trusted IPs to bypass all other checks    |
+| **BypassRouteRule**    | 190      | Allow specific routes to bypass security checks |
+| **BlacklistRule**      | 100      | Block malicious IPs immediately                 |
+| **DdosRule**           | 90       | Detect and prevent DDoS attacks                 |
+| **SecurityPolicyRule** | 80       | Validate requests (method, payload, patterns)   |
+| **RateLimitRule**      | 50       | Control request frequency per IP                |
+
+### Policy Engine Flow
+
+```javascript
+// Request comes in → Policy Engine evaluates rules by priority
+// 1. WhitelistRule: Is IP whitelisted? → ALLOW_BYPASS
+// 2. BypassRouteRule: Is route bypassed? → ALLOW_BYPASS
+// 3. BlacklistRule: Is IP blacklisted? → BLOCK
+// 4. DdosRule: Is this a DDoS attack? → BLOCK
+// 5. SecurityPolicyRule: Is request suspicious? → BLOCK
+// 6. RateLimitRule: Is rate limit exceeded? → BLOCK
+// 7. Default: No rules triggered → ALLOW
+```
+
+## ⚙️ Configuration Guide
+
+### Basic Configuration
 
 ```javascript
 const shield = new K9Shield({
-    rateLimiting: {
-        enabled: true,
-        default: {
-            maxRequests: 10,     // 10 requests per minute
-            timeWindow: 60000,   // 1 minute
-            banDuration: 300000  // 5 minutes ban
-        },
-        routes: {
-            '/api/sensitive-endpoint': {
-                'POST': { 
-                    maxRequests: 3,      // Stricter control for sensitive endpoint
-                    timeWindow: 60000,   // 1 minute
-                    banDuration: 600000  // 10 minutes ban
-                }
-            }
-        }
-    },
-    security: {
-        maxBodySize: 1024 * 100,  // 100KB payload limit
-        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-        userAgentBlacklist: ['bad-bot', 'malicious-crawler']
-    },
-    ddosProtection: {
-        enabled: true,
-        config: {
-            maxConnections: 50,
-            blockDuration: 300,
-            requestThreshold: 30,
-            rateLimitByPath: {
-                '/api/*': 20,    // Special limit for API routes
-                '*': 50           // General limit for all routes
-            }
-        }
+  // Security settings
+  security: {
+    allowPrivateIPs: true, // Allow private IPs (localhost, 192.168.x.x)
+    maxBodySize: 1024 * 1024, // 1MB request limit
+    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE'],
+    userAgentBlacklist: ['bot', 'crawler']
+  },
+
+  // Rate limiting
+  rateLimiting: {
+    enabled: true,
+    default: {
+      maxRequests: 100, // 100 requests per window
+      timeWindow: 60000, // 1 minute window
+      banDuration: 300000 // 5 minute ban
     }
+  },
+
+  // DDoS protection
+  ddosProtection: {
+    enabled: true,
+    config: {
+      maxConnections: 50, // Max concurrent connections
+      blockDuration: 300000, // 5 minute block
+      requestThreshold: 100 // Max requests in burst
+    }
+  },
+
+  // Logging
+  logging: {
+    enable: true,
+    level: 'info' // 'debug', 'info', 'warning', 'error'
+  }
 });
 ```
 
-### IP Management Examples
+### Advanced Configuration
 
 ```javascript
-// Block a specific IP
+const shield = new K9Shield({
+  security: {
+    trustProxy: true,
+    allowPrivateIPs: false,
+    maxBodySize: 1024 * 500, // 500KB limit
+
+    // Security headers
+    securityHeaders: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'X-XSS-Protection': '1; mode=block',
+      'Strict-Transport-Security': 'max-age=31536000'
+    },
+
+    // Content Security Policy
+    csp: {
+      'default-src': ["'self'"],
+      'script-src': ["'self'", "'unsafe-inline'"],
+      'style-src': ["'self'", "'unsafe-inline'"],
+      'img-src': ["'self'", 'data:', 'https:']
+    },
+
+    // Permissions Policy
+    permissions: {
+      geolocation: '()',
+      camera: '()',
+      microphone: '()'
+    }
+  },
+
+  rateLimiting: {
+    enabled: true,
+    default: {
+      maxRequests: 60,
+      timeWindow: 60000,
+      banDuration: 600000, // 10 minute ban
+      throttleDuration: 30000, // Throttle for 30 seconds
+      throttleDelay: 2000 // 2 second delay between requests
+    },
+
+    // Route-specific limits
+    routes: {
+      '/api/auth/login': {
+        POST: {
+          maxRequests: 5, // Only 5 login attempts per minute
+          timeWindow: 60000,
+          banDuration: 1800000 // 30 minute ban for failed attempts
+        }
+      },
+      '/api/upload': {
+        POST: {
+          maxRequests: 3, // Limited upload requests
+          timeWindow: 300000 // 5 minute window
+        }
+      }
+    }
+  },
+
+  ddosProtection: {
+    enabled: true,
+    config: {
+      maxConnections: 200,
+      timeWindow: 60000,
+      blockDuration: 1800000, // 30 minute block
+      requestThreshold: 500,
+      burstThreshold: 50,
+      slowRequestThreshold: 10,
+
+      // Path-based rate limits
+      rateLimitByPath: {
+        '/api/*': 100, // API endpoints: 100 req/min
+        '/auth/*': 20, // Auth endpoints: 20 req/min
+        '/upload/*': 5, // Upload endpoints: 5 req/min
+        '*': 500 // All other routes: 500 req/min
+      }
+    }
+  },
+
+  // Bypass routes (won't be processed by security rules)
+  bypassRoutes: ['/health', '/metrics', '/status'],
+
+  // Error handling
+  errorHandling: {
+    includeErrorDetails: true,
+    customHandlers: {
+      rateLimitExceeded: (res, data) => {
+        res.status(429).json({
+          error: 'Rate limit exceeded',
+          retryAfter: data.retryAfter,
+          limit: data.limit
+        });
+      },
+      ddosAttack: (res) => {
+        res.status(403).json({
+          error: 'Access denied',
+          reason: 'Suspicious traffic detected'
+        });
+      },
+      suspiciousRequest: (res) => {
+        res.status(403).json({
+          error: 'Request blocked',
+          reason: 'Suspicious patterns detected'
+        });
+      }
+    }
+  }
+});
+```
+
+## 🛡️ Security Features
+
+### 1. IP Management
+
+```javascript
+// Block specific IPs
 shield.blockIP('192.168.1.100');
+shield.blockIP('10.0.0.50');
 
-// Whitelist an IP
-shield.whitelistIP('10.0.0.1');
+// Whitelist trusted IPs (bypass all security checks)
+shield.whitelistIP('203.0.113.10');
+shield.whitelistIP('198.51.100.0/24'); // CIDR notation
 
-// Unblock a previously blocked IP
+// Remove from lists
 shield.unblockIP('192.168.1.100');
+shield.unwhitelistIP('203.0.113.10');
 
-// Remove an IP from whitelist
-shield.unwhitelistIP('10.0.0.1');
+// Check IP status
+const isBlocked = shield.security.isBlacklisted(req, res, ip);
+const isWhitelisted = shield.security.isWhitelisted(ip);
 ```
 
-### Adding Custom Security Patterns
+### 2. Custom Security Patterns
 
 ```javascript
-// Custom patterns for SQL Injection and XSS
-shield.addSuspiciousPattern(/SELECT.*FROM/i);
-shield.addSuspiciousPattern(/<script>|javascript:/i);
+// Add custom suspicious patterns
+shield.addSuspiciousPattern(/eval\s*\(/i); // Code injection
+shield.addSuspiciousPattern(/<script[^>]*>.*?<\/script>/i); // XSS attempts
+shield.addSuspiciousPattern(/UNION\s+SELECT/i); // SQL injection
+shield.addSuspiciousPattern(/\.\.\/|\.\.\\/); // Path traversal
+
+// The patterns will be checked against:
+// - Request URL
+// - Query parameters
+// - POST body (JSON)
+// - Headers (User-Agent, Referer)
 ```
 
-### Advanced Error Handling
+### 3. Route-Specific Protection
 
 ```javascript
 const shield = new K9Shield({
-    errorHandling: {
-        includeErrorDetails: true,
-        customHandlers: {
-            // Custom response for rate limit exceeded
-            'rateLimitExceeded': (res, data) => {
-                res.status(429).json({
-                    message: 'Too many requests',
-                    retryAfter: data.retryAfter,
-                    limit: data.limit
-                });
-            },
-            // Custom response for DDoS attack
-            'ddosAttack': (res) => {
-                res.status(403).json({
-                    message: 'Suspicious traffic detected',
-                    action: 'Access denied'
-                });
-            }
-        }
+  rateLimiting: {
+    routes: {
+      // Strict limits for authentication
+      '/api/auth/*': {
+        POST: { maxRequests: 3, timeWindow: 60000, banDuration: 900000 }
+      },
+
+      // API endpoints
+      '/api/v1/*': {
+        GET: { maxRequests: 1000, timeWindow: 60000 },
+        POST: { maxRequests: 100, timeWindow: 60000 },
+        PUT: { maxRequests: 50, timeWindow: 60000 },
+        DELETE: { maxRequests: 10, timeWindow: 60000 }
+      },
+
+      // File upload restrictions
+      '/upload': {
+        POST: { maxRequests: 5, timeWindow: 300000 } // 5 uploads per 5 minutes
+      }
     }
+  }
 });
 ```
 
-### Logging and Monitoring
+## 💡 Usage Examples
+
+### Development Environment
 
 ```javascript
-// Get all log records
-const logs = shield.getLogs();
+const shield = new K9Shield({
+  security: {
+    allowPrivateIPs: true, // Allow localhost
+    maxBodySize: 1024 * 1024 * 10 // 10MB for development
+  },
+  rateLimiting: {
+    enabled: false // Disable rate limiting in dev
+  },
+  ddosProtection: {
+    enabled: false // Disable DDoS protection in dev
+  },
+  logging: {
+    level: 'debug' // Verbose logging
+  }
+});
+```
 
-// Get archived log records
+### Production Environment
+
+```javascript
+const shield = new K9Shield({
+  security: {
+    allowPrivateIPs: false, // Block private IPs
+    trustProxy: true, // Trust reverse proxy
+    maxBodySize: 1024 * 100, // 100KB limit
+    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE']
+  },
+  rateLimiting: {
+    enabled: true,
+    default: {
+      maxRequests: 60, // Conservative limit
+      timeWindow: 60000,
+      banDuration: 1800000 // 30 minute ban
+    }
+  },
+  ddosProtection: {
+    enabled: true,
+    config: {
+      maxConnections: 100, // Conservative connection limit
+      blockDuration: 3600000 // 1 hour block
+    }
+  },
+  logging: {
+    level: 'warning' // Only important events
+  }
+});
+```
+
+### E-commerce Application
+
+```javascript
+const shield = new K9Shield({
+  rateLimiting: {
+    routes: {
+      '/api/auth/login': {
+        POST: { maxRequests: 5, timeWindow: 300000, banDuration: 1800000 }
+      },
+      '/api/cart/checkout': {
+        POST: { maxRequests: 3, timeWindow: 60000 }
+      },
+      '/api/products/search': {
+        GET: { maxRequests: 100, timeWindow: 60000 }
+      },
+      '/api/user/profile': {
+        PUT: { maxRequests: 5, timeWindow: 300000 }
+      }
+    }
+  },
+  security: {
+    userAgentBlacklist: ['bot', 'crawler', 'scraper'],
+    maxBodySize: 1024 * 500 // 500KB for product images
+  }
+});
+```
+
+### API Gateway
+
+```javascript
+const shield = new K9Shield({
+  rateLimiting: {
+    routes: {
+      '/api/public/*': {
+        GET: { maxRequests: 1000, timeWindow: 60000 }
+      },
+      '/api/authenticated/*': {
+        GET: { maxRequests: 500, timeWindow: 60000 },
+        POST: { maxRequests: 100, timeWindow: 60000 }
+      },
+      '/api/admin/*': {
+        GET: { maxRequests: 100, timeWindow: 60000 },
+        POST: { maxRequests: 20, timeWindow: 60000 }
+      }
+    }
+  },
+  bypassRoutes: ['/health', '/metrics', '/api/status']
+});
+```
+
+## 🔌 API Reference
+
+### Core Methods
+
+```javascript
+// Initialize K9Shield
+const shield = new K9Shield(config);
+
+// Apply middleware
+app.use(shield.protect());
+
+// IP Management
+shield.blockIP('192.168.1.100');
+shield.unblockIP('192.168.1.100');
+shield.whitelistIP('10.0.0.1');
+shield.unwhitelistIP('10.0.0.1');
+
+// Pattern Management
+shield.addSuspiciousPattern(/malicious-pattern/i);
+
+// Configuration
+shield.setConfig(newConfig);
+
+// Logging
+const logs = shield.getLogs();
 const archivedLogs = shield.getArchivedLogs();
 
-// Reset all settings and statistics
+// Reset (clear all data and statistics)
 shield.reset();
 ```
 
-### Test Environment Configuration
+### Configuration Options
 
 ```javascript
-// More flexible settings for development environment
-process.env.NODE_ENV = 'development';
+{
+  // Security settings
+  security: {
+    trustProxy: boolean,              // Trust X-Forwarded-For header
+    allowPrivateIPs: boolean,         // Allow private IP addresses
+    maxBodySize: number,              // Max request body size in bytes
+    allowedMethods: string[],         // Allowed HTTP methods
+    userAgentBlacklist: string[],     // Blocked user agents
+    refererBlacklist: string[],       // Blocked referers
+    securityHeaders: object,          // Custom security headers
+    csp: object,                      // Content Security Policy
+    permissions: object               // Permissions Policy
+  },
 
-const shield = new K9Shield({
-    rateLimiting: { enabled: false },  // Rate limit disabled in development
-    ddosProtection: { enabled: false } // DDoS protection disabled
-});
-```
-
-### Production Environment Configuration
-
-```javascript
-// Strict security settings for production
-process.env.NODE_ENV = 'production';
-
-const shield = new K9Shield({
-    rateLimiting: {
-        enabled: true,
-        default: { maxRequests: 100, timeWindow: 60000 }
+  // Rate limiting
+  rateLimiting: {
+    enabled: boolean,
+    default: {
+      maxRequests: number,            // Max requests per window
+      timeWindow: number,             // Time window in milliseconds
+      banDuration: number,            // Ban duration in milliseconds
+      throttleDuration: number,       // Throttle duration
+      throttleDelay: number           // Delay between throttled requests
     },
-    security: {
-        maxBodySize: 1024 * 1024,  // 1MB
-        allowPrivateIPs: false
-    },
-    ddosProtection: {
-        enabled: true,
-        config: {
-            maxConnections: 200,
-            blockDuration: 1800000  // 30 minutes block
-        }
-    },
-    logging: {
-        level: 'warning',  // Log only critical warnings
-        maxLogSize: 10000  // More log storage
+    routes: object                    // Route-specific limits
+  },
+
+  // DDoS protection
+  ddosProtection: {
+    enabled: boolean,
+    config: {
+      maxConnections: number,         // Max concurrent connections
+      timeWindow: number,             // Analysis time window
+      blockDuration: number,          // Block duration
+      requestThreshold: number,       // Request threshold
+      burstThreshold: number,         // Burst threshold
+      slowRequestThreshold: number,   // Slow request threshold
+      rateLimitByPath: object         // Path-based limits
     }
-});
+  },
+
+  // Bypass routes
+  bypassRoutes: string[],
+
+  // Error handling
+  errorHandling: {
+    includeErrorDetails: boolean,
+    customHandlers: object
+  },
+
+  // Logging
+  logging: {
+    enable: boolean,
+    level: string,                    // 'debug', 'info', 'warning', 'error'
+    maxLogSize: number,
+    archiveLimit: number
+  }
+}
 ```
 
-## Core Components
+## 🔧 Custom Rules
 
-### 1. K9Shield Class (`src/k9shield.js`)
-The main class that orchestrates all security features:
+You can extend K9Shield with custom security rules:
 
 ```javascript
-const shield = new K9Shield({
-    security: {
-        trustProxy: true,
-        allowPrivateIPs: false,
-        maxBodySize: 1024 * 1024 // 1MB
+const Rule = require('k9shield/src/policy-engine/Rule');
+
+// Create a custom rule
+const customRule = new Rule({
+  name: 'CustomSecurityRule',
+  priority: 75, // Between SecurityPolicyRule (80) and RateLimitRule (50)
+
+  condition: async (context) => {
+    const { req, ip } = context;
+
+    // Example: Block requests with suspicious headers
+    if (req.headers['x-malicious-header']) {
+      return true;
     }
+
+    // Example: Block requests from specific countries (you'd need GeoIP)
+    // if (isFromBlockedCountry(ip)) {
+    //   return true;
+    // }
+
+    return false;
+  },
+
+  action: (context) => {
+    return {
+      decision: 'BLOCK',
+      reason: 'customSecurity',
+      message: 'Request blocked by custom rule'
+    };
+  }
+});
+
+// Add the rule to the policy engine
+shield.policyEngine.addRule(customRule);
+```
+
+### Custom Rule Examples
+
+#### Geographic Blocking Rule
+
+```javascript
+const geoBlockRule = new Rule({
+  name: 'GeoBlockRule',
+  priority: 85,
+  condition: async (context) => {
+    const { ip } = context;
+    const country = await getCountryFromIP(ip); // Your GeoIP implementation
+    const blockedCountries = ['CN', 'RU', 'KP']; // ISO country codes
+    return blockedCountries.includes(country);
+  },
+  action: (context) => ({
+    decision: 'BLOCK',
+    reason: 'geoBlocked',
+    message: 'Access denied from your location'
+  })
 });
 ```
 
-### 2. IP Utils (`src/utils/ip.js`)
-Handles IP address management and validation:
+#### Business Hours Rule
 
 ```javascript
-// IP management examples
+const businessHoursRule = new Rule({
+  name: 'BusinessHoursRule',
+  priority: 60,
+  condition: async (context) => {
+    const now = new Date();
+    const hour = now.getHours();
+    const isBusinessHours = hour >= 9 && hour <= 17;
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+
+    // Block admin routes outside business hours
+    return (
+      context.req.path.startsWith('/admin') && (!isBusinessHours || isWeekend)
+    );
+  },
+  action: (context) => ({
+    decision: 'BLOCK',
+    reason: 'outsideBusinessHours',
+    message: 'Admin access only allowed during business hours'
+  })
+});
+```
+
+## 🧪 Testing
+
+### Basic Test Setup
+
+```javascript
+// test.js
+const express = require('express');
+const K9Shield = require('k9shield');
+
+const app = express();
+const shield = new K9Shield({
+  security: { allowPrivateIPs: true },
+  logging: { enable: true, level: 'info' },
+  errorHandling: { includeErrorDetails: true }
+});
+
+// Block a test IP
 shield.blockIP('192.168.1.100');
-shield.whitelistIP('10.0.0.1');
-shield.unblockIP('192.168.1.100');
-shield.unwhitelistIP('10.0.0.1');
-```
 
-### 3. Security Module (`src/core/security.js`)
-Manages security patterns and request validation:
+// Apply middleware
+app.use(shield.protect());
 
-```javascript
-// Add custom security patterns
-shield.addSuspiciousPattern(/eval\(/i);
-shield.addSuspiciousPattern(/(document|window)\./i);
-```
+app.get('/', (req, res) => {
+  res.json({ message: 'Protected endpoint', ip: req.ip });
+});
 
-### 4. Rate Limiter (`src/core/rateLimiter.js`)
-Controls request rates and implements throttling:
-
-```javascript
-const config = {
-    rateLimiting: {
-        enabled: true,
-        default: {
-            maxRequests: 100,
-            timeWindow: 60000, // 1 minute
-            banDuration: 3600000 // 1 hour
-        },
-        routes: {
-            '/api/data': {
-                'POST': { maxRequests: 5, timeWindow: 30000 }
-            }
-        }
-    }
-};
-```
-
-### 5. DDoS Protection (`src/core/ddos.js`)
-Provides DDoS attack prevention:
-
-```javascript
-const config = {
-    ddosProtection: {
-        enabled: true,
-        config: {
-            maxConnections: 200,
-            timeWindow: 60000,
-            blockDuration: 1800000,
-            requestThreshold: 500,
-            burstThreshold: 50
-        }
-    }
-};
-```
-
-## Configuration
-
-### Complete Configuration Example
-
-```javascript
-const shield = new K9Shield({
-    security: {
-        trustProxy: true,
-        allowPrivateIPs: false,
-        maxBodySize: 1024 * 1024,
-        allowedMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-        userAgentBlacklist: ['bad-bot', 'malicious-crawler'],
-        refererBlacklist: ['malicious.com'],
-        securityHeaders: {
-            'X-Content-Type-Options': 'nosniff',
-            'X-Frame-Options': 'DENY',
-            'X-XSS-Protection': '1; mode=block',
-            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains'
-        },
-        csp: {
-            'default-src': ["'self'"],
-            'script-src': ["'self'", "'unsafe-inline'"],
-            'style-src': ["'self'", "'unsafe-inline'"],
-            'img-src': ["'self'", 'data:', 'https:']
-        },
-        permissions: {
-            'geolocation': '()',
-            'camera': '()',
-            'microphone': '()'
-        }
-    },
-    rateLimiting: {
-        enabled: true,
-        default: {
-            maxRequests: 100,
-            timeWindow: 60000,
-            banDuration: 3600000,
-            throttleDuration: 60000,
-            throttleDelay: 1000
-        },
-        routes: {
-            '/api/data': {
-                'POST': { maxRequests: 5, timeWindow: 30000 }
-            }
-        }
-    },
-    ddosProtection: {
-        enabled: true,
-        config: {
-            maxConnections: 200,
-            timeWindow: 60000,
-            blockDuration: 1800000,
-            requestThreshold: 500,
-            burstThreshold: 50,
-            slowRequestThreshold: 10,
-            rateLimitByPath: {
-                '/api/*': 100,
-                '/auth/*': 20,
-                '*': 500
-            }
-        }
-    },
-    logging: {
-        enable: true,
-        level: 'info',
-        maxLogSize: 5000,
-        archiveLimit: 5
-    },
-    errorHandling: {
-        includeErrorDetails: true,
-        customHandlers: {
-            'rateLimitExceeded': (res, data) => {
-                res.status(429).json({
-                    message: 'Too many requests',
-                    retryAfter: data.retryAfter,
-                    limit: data.limit,
-                    windowMs: data.windowMs
-                });
-            }
-        }
-    },
-    bypassRoutes: ['/health', '/metrics']
+app.listen(3000, () => {
+  console.log('Test server running on port 3000');
 });
 ```
 
-## Security Features
+### Expected Responses
 
-### 1. Rate Limiting
-- **Global Limits**: Set default limits for all routes
-- **Route-Specific Limits**: Configure different limits for specific routes
-- **Throttling**: Progressive slowdown of requests
-- **Ban System**: Temporary IP bans for limit violations
+- **200**: Request allowed
+- **403**: Access denied (blacklist, suspicious patterns, DDoS)
+- **405**: Method not allowed
+- **413**: Payload too large
+- **429**: Rate limit exceeded
 
-### 2. DDoS Protection
-- **Connection Tracking**: Monitor connection counts
-- **Burst Detection**: Identify sudden request spikes
-- **Progressive Penalties**: Increasing restrictions for violations
-- **Path-Based Limits**: Different limits for different paths
+## 📋 Best Practices
 
-### 3. Security Headers
-- **CSP**: Content Security Policy configuration
-- **HSTS**: HTTP Strict Transport Security
-- **XSS Protection**: Cross-site scripting prevention
-- **Frame Options**: Clickjacking prevention
+### 1. Configuration
 
-### 4. Pattern Detection
-- **SQL Injection**: Detect SQL injection attempts
-- **XSS**: Cross-site scripting pattern detection
-- **Path Traversal**: Directory traversal prevention
-- **Custom Patterns**: Add your own detection patterns
-
-## API Reference
-
-### Shield Methods
 ```javascript
-// IP Management
-shield.blockIP(ip)
-shield.unblockIP(ip)
-shield.whitelistIP(ip)
-shield.unwhitelistIP(ip)
+// ✅ Good: Environment-specific configuration
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Pattern Management
-shield.addSuspiciousPattern(pattern)
+const shield = new K9Shield({
+  security: {
+    allowPrivateIPs: !isProduction,
+    maxBodySize: isProduction ? 1024 * 100 : 1024 * 1024 * 10
+  },
+  rateLimiting: {
+    enabled: isProduction,
+    default: {
+      maxRequests: isProduction ? 60 : 1000
+    }
+  }
+});
 
-// Configuration
-shield.setConfig(config)
-
-// Logging
-shield.getLogs()
-shield.getArchivedLogs()
-
-// Reset
-shield.reset()
+// ❌ Bad: Hardcoded production values in development
+const shield = new K9Shield({
+  security: { allowPrivateIPs: false }, // Blocks localhost in development
+  rateLimiting: {
+    default: { maxRequests: 10 } // Too restrictive for development
+  }
+});
 ```
 
-## Testing
+### 2. Rate Limiting
 
-Run the test server:
+```javascript
+// ✅ Good: Route-specific limits based on criticality
+rateLimiting: {
+  routes: {
+    '/api/auth/login': { POST: { maxRequests: 5, banDuration: 1800000 } },
+    '/api/data/export': { GET: { maxRequests: 2, timeWindow: 3600000 } },
+    '/api/search': { GET: { maxRequests: 100, timeWindow: 60000 } }
+  }
+}
 
-```bash
-node test.js
+// ❌ Bad: Same limits for all routes
+rateLimiting: {
+  default: { maxRequests: 10 } // Too restrictive for read operations
+}
 ```
 
-### Test Commands
+### 3. Error Handling
 
-1. **Basic Request Test**
-```bash
-curl http://localhost:3000/
+```javascript
+// ✅ Good: Custom error responses
+errorHandling: {
+  customHandlers: {
+    rateLimitExceeded: (res, data) => {
+      res.status(429).json({
+        error: 'Rate limit exceeded',
+        retryAfter: data.retryAfter
+      });
+    };
+  }
+}
+
+// ❌ Bad: Generic error responses (reveals no information to users)
 ```
 
-2. **Rate Limit Test**
-```bash
-for i in $(seq 1 10); do 
-    curl http://localhost:3000/api/test
-    echo ""
-    sleep 1
-done
+### 4. Monitoring
+
+```javascript
+// ✅ Good: Regular log monitoring
+setInterval(() => {
+  const logs = shield.getLogs();
+  const recentBlocks = logs.filter(
+    (log) =>
+      log.level === 'warning' &&
+      Date.now() - new Date(log.timestamp).getTime() < 300000 // Last 5 minutes
+  );
+
+  if (recentBlocks.length > 50) {
+    console.warn('High number of blocks detected:', recentBlocks.length);
+    // Send alert to monitoring system
+  }
+}, 60000); // Check every minute
 ```
 
-3. **SQL Injection Test**
-```bash
-curl -X POST http://localhost:3000/search \
-     -H "Content-Type: application/json" \
-     -d '{"query": "1 UNION SELECT * FROM users"}'
+### 5. Performance
+
+```javascript
+// ✅ Good: Reasonable limits based on your server capacity
+const shield = new K9Shield({
+  ddosProtection: {
+    config: {
+      maxConnections: 200, // Based on your server's capacity
+      requestThreshold: 500 // Reasonable for legitimate traffic
+    }
+  }
+});
+
+// ❌ Bad: Overly restrictive limits
+const shield = new K9Shield({
+  ddosProtection: {
+    config: {
+      maxConnections: 10, // Too low, will block legitimate users
+      requestThreshold: 20 // Too restrictive
+    }
+  }
+});
 ```
 
-4. **XSS Test**
-```bash
-curl -X POST http://localhost:3000/comment \
-     -H "Content-Type: application/json" \
-     -d '{"comment": "<script>alert(\"XSS\")</script>"}'
-```
+## 🔒 Security Considerations
 
-5. **IP Information**
-```bash
-curl http://localhost:3000/ip
-```
+1. **Keep K9Shield Updated**: Regularly update to get the latest security patches
+2. **Monitor Logs**: Set up log monitoring and alerting for security events
+3. **Test Configuration**: Always test your configuration in a staging environment
+4. **Rate Limiting**: Set appropriate limits based on your application's usage patterns
+5. **IP Management**: Regularly review and update your IP blacklists and whitelists
+6. **Custom Rules**: Validate custom rules thoroughly before deploying to production
 
-6. **Bypass Routes Test**
-```bash
-curl http://localhost:3000/health
-curl http://localhost:3000/metrics
-```
-
-7. **DDoS Test**
-```bash
-for i in $(seq 1 100); do 
-    curl http://localhost:3000/ & 
-done
-```
-
-8. **Large Payload Test**
-```bash
-curl -X POST http://localhost:3000/comment \
-     -H "Content-Type: application/json" \
-     -d '{"comment": "A...(100KB+)..."}'
-```
-
-## Error Handling
-
-K9Shield provides detailed error responses:
-
-- **403**: Access Denied / Suspicious Request
-- **405**: Method Not Allowed
-- **413**: Payload Too Large
-- **429**: Too Many Requests
-- **500**: Internal Server Error
-
-Each error includes:
-- Error message
-- Error code
-- Timestamp
-- Additional details (when enabled)
-
-## Best Practices
-
-1. **Rate Limiting**
-   - Set appropriate limits based on your application needs
-   - Use route-specific limits for sensitive endpoints
-   - Implement proper retry-after headers
-
-2. **DDoS Protection**
-   - Configure thresholds based on your server capacity
-   - Monitor and adjust settings based on traffic patterns
-   - Use bypass routes for critical endpoints
-
-3. **Security Headers**
-   - Implement strict CSP policies
-   - Enable HSTS in production
-   - Configure appropriate frame options
-
-4. **Logging**
-   - Set appropriate log levels
-   - Implement log rotation
-   - Monitor security events regularly
-
-## Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+With K9Shield, you can build a military-grade firewall infrastructure and protect your application professionally against the latest and most advanced web threats. For enterprise integrations, technical support, or custom solutions, please contact us at `support@k9crypt.xyz`.
