@@ -1,6 +1,6 @@
 {
   "name": "k9shield",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "An Express.js middleware library providing military-grade web application security.",
   "main": "index.js",
   "scripts": {
@@ -59,7 +59,7 @@
     "crypto": "^1.0.1",
     "https": "^1.0.0",
     "ipaddr.js": "^2.2.0",
-    "k9crypt": "^1.1.6",
+    "k9crypt": "^1.1.7",
     "semver": "^7.7.2"
   }
 }
