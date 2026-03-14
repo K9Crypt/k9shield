@@ -15,13 +15,15 @@ class PolicyEngine {
     const createDdosRule = require('./rules/ddosRule');
     const createSecurityPolicyRule = require('./rules/securityPolicyRule');
     const createRateLimitRule = require('./rules/rateLimitRule');
+    const createCsrfRule = require('./rules/csrfRule');
 
-    this.addRule(createWhitelistRule(this.k9shield));
-    this.addRule(createBypassRouteRule(this.k9shield));
-    this.addRule(createBlacklistRule(this.k9shield));
-    this.addRule(createDdosRule(this.k9shield));
-    this.addRule(createSecurityPolicyRule(this.k9shield));
-    this.addRule(createRateLimitRule(this.k9shield));
+    this.addRule(createWhitelistRule(this.k9shield));    // priority 200 – whitelist first
+    this.addRule(createBlacklistRule(this.k9shield));    // priority 100 – block known bad IPs before bypass
+    this.addRule(createDdosRule(this.k9shield));         // priority 90  – DDoS check before bypass
+    this.addRule(createBypassRouteRule(this.k9shield));  // priority 85  – bypass only after security gates
+    this.addRule(createSecurityPolicyRule(this.k9shield)); // priority 80
+    this.addRule(createCsrfRule(this.k9shield));         // priority 75  – CSRF for state-changing methods
+    this.addRule(createRateLimitRule(this.k9shield));    // priority 50
 
     this.logger.log(
       'info',

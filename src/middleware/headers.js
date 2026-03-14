@@ -20,7 +20,6 @@ class HeaderManager {
       'X-Download-Options': 'noopen',
       'X-Powered-By': undefined,
       Server: undefined,
-      'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Expose-Headers':
         'Content-Length, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
       'Feature-Policy': this.generateFeaturePolicy(),
@@ -239,11 +238,13 @@ class HeaderManager {
 
       if (allowedOrigins === '*') {
         headers['Access-Control-Allow-Origin'] = '*';
+        // wildcard origin is incompatible with credentials — omit the header
       } else if (
         Array.isArray(allowedOrigins) &&
         allowedOrigins.includes(origin)
       ) {
         headers['Access-Control-Allow-Origin'] = origin;
+        headers['Access-Control-Allow-Credentials'] = 'true';
         headers['Vary'] = 'Origin';
       }
 

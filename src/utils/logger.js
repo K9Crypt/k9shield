@@ -19,6 +19,12 @@ class Logger {
     this.externalLogService = null;
   }
 
+  sanitizeField(value, maxLen = 256) {
+    if (typeof value !== 'string') return null;
+    // strip CR/LF/ANSI/control chars to prevent log injection
+    return value.replace(/[\r\n\t\x00-\x1f\x7f\x1b]/g, ' ').slice(0, maxLen);
+  }
+
   async log(type, message, req = null) {
     if (
       !this.config.logging.enable ||
@@ -26,26 +32,34 @@ class Logger {
     )
       return;
 
+    const isReqObj = req && typeof req === 'object' && req.method && req.path;
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       type,
-      message,
-      method: req ? req.method : null,
-      path: req ? req.path : null,
-      userAgent: req && req.headers ? req.headers['user-agent'] : null,
-      referer: req && req.headers ? req.headers['referer'] : null
+      message: this.sanitizeField(String(message), 1024),
+      method: isReqObj ? req.method : null,
+      path: isReqObj ? this.sanitizeField(req.path) : null,
+      userAgent: isReqObj && req.headers ? this.sanitizeField(req.headers['user-agent']) : null,
+      referer: isReqObj && req.headers ? this.sanitizeField(req.headers['referer']) : null
     };
 
     setImmediate(() => {
       this.logs.push(logEntry);
 
-      console.log(
-        `[K9Shield] ${logEntry.timestamp} - ${type}: ${message}${req && req.method && req.path ? ` (${req.method} ${req.path})` : ''}${req && req.headers && req.headers['user-agent'] ? ` User-Agent: ${req.headers['user-agent']}` : ''}${req && req.headers && req.headers['referer'] ? ` Referer: ${req.headers['referer']}` : ''}`
-      );
+      const suffix = [
+        logEntry.method && logEntry.path ? ` (${logEntry.method} ${logEntry.path})` : '',
+        logEntry.userAgent ? ` UA: ${logEntry.userAgent}` : '',
+        logEntry.referer ? ` Ref: ${logEntry.referer}` : ''
+      ].join('');
 
-      this.rotateAndArchiveLogs().catch((error) => {
-        console.error('Log rotation error:', error);
-      });
+      console.log(`[K9Shield] ${logEntry.timestamp} - ${type}: ${logEntry.message}${suffix}`);
+
+      if (this.logs.length >= this.config.logging.maxLogSize) {
+        this.rotateAndArchiveLogs().catch((error) => {
+          console.error('Log rotation error:', error);
+        });
+      }
     });
 
     if (this.externalLogService) {

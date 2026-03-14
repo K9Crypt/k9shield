@@ -13,8 +13,9 @@ function createRateLimitRule(k9shield) {
       );
 
       if (result && result.error) {
+        const isThrottle = result.error === 'rateLimitExceeded';
         context.rateLimitDecision = {
-          decision: 'BLOCK',
+          decision: isThrottle ? 'THROTTLE' : 'BLOCK',
           reason: result.error,
           data: result.data
         };

@@ -24,7 +24,7 @@ class DataLossPreventionManager {
       passport: (match) => this.maskPassport(match)
     };
 
-    this.encryptionKey = this.generateEncryptionKey();
+    this.encryptionKey = this.resolveEncryptionKey();
     this.encryptor = new k9crypt(this.encryptionKey);
   }
 
@@ -128,6 +128,24 @@ class DataLossPreventionManager {
       '*'.repeat(passport.length - 4) +
       passport.slice(-2)
     );
+  }
+
+  resolveEncryptionKey() {
+    const configKey = this.config.dlp?.encryptionKey || process.env.K9SHIELD_DLP_KEY;
+    if (configKey) {
+      if (typeof configKey !== 'string' || configKey.length < 64) {
+        throw new Error('K9Shield DLP encryption key must be at least 64 hex characters (32 bytes)');
+      }
+      return configKey;
+    }
+
+    // ephemeral key — encrypted data will not survive restarts; warn loudly
+    const ephemeral = crypto.randomBytes(32).toString('hex');
+    console.warn(
+      '[K9Shield] WARNING: DLP encryption key not configured. Using ephemeral key — ' +
+      'encrypted data cannot be decrypted after restart. Set config.dlp.encryptionKey or K9SHIELD_DLP_KEY env var.'
+    );
+    return ephemeral;
   }
 
   generateEncryptionKey() {

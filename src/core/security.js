@@ -1,3 +1,5 @@
+const CHECK_STRING_MAX_LENGTH = 32 * 1024; // 32KB — cap to reduce CPU/memory and ReDoS surface
+
 class Security {
   constructor(config, logger, ipUtils) {
     this.config = config;
@@ -5,6 +7,9 @@ class Security {
     this.ipUtils = ipUtils;
     this.blacklist = new Set();
     this.whitelist = new Set();
+    /** Pre-parsed CIDR ranges for O(1) match without re-parsing (performance). */
+    this.blacklistParsedCIDRs = [];
+    this.whitelistParsedCIDRs = [];
     this.tempBlockList = new Map();
     this.blockHistory = new Map();
     this.lastAttackTimestamps = new Map();
@@ -189,16 +194,12 @@ class Security {
   }
 
   isBlacklisted(req, res, ip) {
-    if (
-      Array.from(this.blacklist).some((blacklistEntry) =>
-        this.ipUtils.matchIP(ip, blacklistEntry)
-      )
-    ) {
-      this.logger.log(
-        'blocked',
-        `Blocked request from blacklisted IP ${ip}`,
-        req
-      );
+    if (this.blacklist.has(ip)) {
+      this.logger.log('blocked', `Blocked request from blacklisted IP ${ip}`, req);
+      return true;
+    }
+    if (this.blacklistParsedCIDRs.length > 0 && this.ipUtils.matchIPInParsedRanges(ip, this.blacklistParsedCIDRs.map((r) => r.parsed))) {
+      this.logger.log('blocked', `Blocked request from blacklisted CIDR ${ip}`, req);
       return true;
     }
 
@@ -216,13 +217,21 @@ class Security {
   }
 
   isWhitelisted(ip) {
-    return Array.from(this.whitelist).some((whitelistEntry) =>
-      this.ipUtils.matchIP(ip, whitelistEntry)
-    );
+    if (this.whitelist.has(ip)) return true;
+    if (this.whitelistParsedCIDRs.length > 0 && this.ipUtils.matchIPInParsedRanges(ip, this.whitelistParsedCIDRs.map((r) => r.parsed))) return true;
+    return false;
   }
 
   checkPayloadSize(req, res, ip) {
-    if (req.headers['content-length'] > this.config.security.maxBodySize) {
+    const rawLen = req.headers['content-length'];
+    const contentLength = Number.parseInt(rawLen, 10);
+    // treat malformed or negative Content-Length as a bad request
+    if (rawLen !== undefined && (!Number.isFinite(contentLength) || contentLength < 0)) {
+      this.incrementAttackScore(ip, this.thresholds.suspiciousPatternScore);
+      this.logger.log('warning', `Invalid Content-Length header from ${ip}`, req);
+      return false;
+    }
+    if (contentLength > this.config.security.maxBodySize) {
       this.incrementAttackScore(ip, this.thresholds.suspiciousPatternScore);
       this.logger.log('warning', `Payload too large from ${ip}`, req);
       return false;
@@ -235,7 +244,8 @@ class Security {
       const checkString = this.createCheckString(req);
       if (!checkString) return false;
 
-      if (checkString.length > 50000) {
+      const maxLen = this.config.security?.checkStringMaxLength ?? CHECK_STRING_MAX_LENGTH;
+      if (checkString.length > maxLen) {
         this.incrementAttackScore(ip, this.thresholds.suspiciousPatternScore);
         this.logger.log('warning', `Request string too long from ${ip}`, req);
         return true;
@@ -249,20 +259,26 @@ class Security {
           if (pattern.test(checkString)) {
             totalScore += this.thresholds.suspiciousPatternScore;
             detectedPatterns.add(pattern.toString());
+            if (totalScore >= this.thresholds.scoreThreshold) {
+              this.handleSuspiciousRequest(ip, totalScore, detectedPatterns, req);
+              return true;
+            }
           }
         } catch (e) {
           this.logger.log('warning', `Pattern test error: ${e.message}`, req);
         }
       }
 
-      for (const [category, patterns] of Object.entries(
-        this.advancedPatterns
-      )) {
+      for (const [category, patterns] of Object.entries(this.advancedPatterns)) {
         for (const pattern of patterns) {
           try {
             if (pattern.test(checkString)) {
               totalScore += this.thresholds.maliciousPatternScore;
               detectedPatterns.add(`${category}:${pattern.toString()}`);
+              if (totalScore >= this.thresholds.scoreThreshold) {
+                this.handleSuspiciousRequest(ip, totalScore, detectedPatterns, req);
+                return true;
+              }
             }
           } catch (e) {
             this.logger.log(
@@ -278,12 +294,10 @@ class Security {
         totalScore += this.thresholds.suspiciousPatternScore;
         detectedPatterns.add('special-char-anomaly');
       }
-
       if (this.hasEncodingAnomaly(checkString)) {
         totalScore += this.thresholds.suspiciousPatternScore;
         detectedPatterns.add('encoding-anomaly');
       }
-
       if (this.hasUnicodeEvasion(checkString)) {
         totalScore += this.thresholds.maliciousPatternScore;
         detectedPatterns.add('unicode-evasion');
@@ -320,6 +334,11 @@ class Security {
         reason: Array.from(patterns).join(', '),
         score
       });
+
+      // update block history so calculateBlockDuration escalates correctly on repeat offenders
+      const history = this.blockHistory.get(ip) || [];
+      history.push({ timestamp: Date.now(), duration: blockDuration, score });
+      this.blockHistory.set(ip, history);
     }
 
     this.logger.log('attack', `Suspicious patterns detected from ${ip}`, {
@@ -383,6 +402,7 @@ class Security {
 
   createCheckString(req) {
     try {
+      const maxLen = this.config.security?.checkStringMaxLength ?? CHECK_STRING_MAX_LENGTH;
       const headersToCheck = Object.keys(req.headers).filter(
         (header) =>
           !this.config.security.requestHeaderWhitelist.includes(
@@ -397,13 +417,14 @@ class Security {
 
       const components = [
         req.url,
-        typeof req.body === 'string' ? req.body : JSON.stringify(req.body),
+        typeof req.body === 'string' ? req.body : JSON.stringify(req.body || ''),
         JSON.stringify(filteredHeaders),
         req.query ? JSON.stringify(req.query) : '',
         req.params ? JSON.stringify(req.params) : ''
       ];
 
-      return components.filter(Boolean).join(' ');
+      const full = components.filter(Boolean).join(' ');
+      return full.length > maxLen ? full.slice(0, maxLen) : full;
     } catch (e) {
       this.logger.log('error', `Error creating check string: ${e.message}`);
       return '';
@@ -432,24 +453,35 @@ class Security {
 
   blockIP(ip) {
     this.blacklist.add(ip);
+    if (typeof ip === 'string' && ip.includes('/')) {
+      const parsed = this.ipUtils.parseCIDR(ip);
+      if (parsed) this.blacklistParsedCIDRs.push({ raw: ip, parsed });
+    }
     this.logger.log('manual', `IP ${ip} manually blocked`);
   }
 
   unblockIP(ip) {
     this.blacklist.delete(ip);
+    this.blacklistParsedCIDRs = this.blacklistParsedCIDRs.filter((r) => r.raw !== ip);
     this.tempBlockList.delete(ip);
     this.logger.log('manual', `IP ${ip} manually unblocked`);
   }
 
   whitelistIP(ip) {
     this.whitelist.add(ip);
+    if (typeof ip === 'string' && ip.includes('/')) {
+      const parsed = this.ipUtils.parseCIDR(ip);
+      if (parsed) this.whitelistParsedCIDRs.push({ raw: ip, parsed });
+    }
     this.blacklist.delete(ip);
+    this.blacklistParsedCIDRs = this.blacklistParsedCIDRs.filter((r) => r.raw !== ip);
     this.tempBlockList.delete(ip);
     this.logger.log('manual', `IP ${ip} manually whitelisted`);
   }
 
   unwhitelistIP(ip) {
     this.whitelist.delete(ip);
+    this.whitelistParsedCIDRs = this.whitelistParsedCIDRs.filter((r) => r.raw !== ip);
     this.logger.log('manual', `IP ${ip} manually unwhitelisted`);
   }
 
@@ -465,6 +497,8 @@ class Security {
   reset() {
     this.blacklist.clear();
     this.whitelist.clear();
+    this.blacklistParsedCIDRs = [];
+    this.whitelistParsedCIDRs = [];
     this.tempBlockList.clear();
     this.blockHistory.clear();
     this.lastAttackTimestamps.clear();

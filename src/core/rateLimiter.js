@@ -1,3 +1,5 @@
+const CLEANUP_INTERVAL_MS = 10000;
+
 class RateLimiter {
   constructor(config, logger) {
     this.config = config;
@@ -5,10 +7,26 @@ class RateLimiter {
     this.requestLimits = new Map();
     this.throttledIPs = new Map();
     this.rateLimitStore = null;
+    this._lastCleanup = Date.now();
   }
 
   async handleRateLimiting(req, res, ip) {
-    this.cleanupOldEntries();
+    // throttle check must happen before rate-limit to enforce active throttle windows
+    const throttle = this.throttledIPs.get(ip);
+    if (throttle && Date.now() < throttle.endTime) {
+      const retryAfter = Math.ceil((throttle.endTime - Date.now()) / 1000);
+      this.setRateLimitHeaders(res, { retryAfter });
+      return { error: 'rateLimitExceeded', data: { retryAfter } };
+    }
+    if (throttle) this.throttledIPs.delete(ip);
+
+    // amortise cleanup cost — run at most once every CLEANUP_INTERVAL_MS
+    const now = Date.now();
+    if (now - this._lastCleanup > CLEANUP_INTERVAL_MS) {
+      this.cleanupOldEntries();
+      this._lastCleanup = now;
+    }
+
     if (!this.config.rateLimiting.enabled) {
       return { error: null };
     }
@@ -94,16 +112,17 @@ class RateLimiter {
   }
 
   handleLocalRateLimit(req, res, ip, rateLimitConfig) {
-    if (!this.requestLimits.has(ip)) {
-      this.requestLimits.set(ip, {
+    let requestData = this.requestLimits.get(ip);
+    if (!requestData) {
+      requestData = {
         count: 1,
         firstRequest: Date.now(),
         warnings: 0
-      });
+      };
+      this.requestLimits.set(ip, requestData);
       return { error: null };
     }
 
-    const requestData = this.requestLimits.get(ip);
     const timePassed = Date.now() - requestData.firstRequest;
 
     if (timePassed > rateLimitConfig.timeWindow) {
@@ -171,12 +190,27 @@ class RateLimiter {
   }
 
   getRouteRateLimit(path, method) {
-    const routeConfig = this.config.rateLimiting.routes;
-    for (const route in routeConfig) {
-      if (typeof route === 'string' && path === route) {
-        return routeConfig[route][method] || routeConfig[route]['default'];
-      } else if (route instanceof RegExp && route.test(path)) {
-        return routeConfig[route][method] || routeConfig[route]['default'];
+    const routePatterns = this.config.rateLimiting.routePatterns;
+    if (Array.isArray(routePatterns) && routePatterns.length > 0) {
+      for (const r of routePatterns) {
+        const pattern = r.pattern;
+        const config = r.config || r;
+        const methodConfig = config[method] || config.default;
+        if (!methodConfig) continue;
+        if (typeof pattern === 'string') {
+          if (path === pattern || (pattern.endsWith('/*') && path.startsWith(pattern.slice(0, -2)))) {
+            return methodConfig;
+          }
+        } else if (pattern instanceof RegExp && pattern.test(path)) {
+          return methodConfig;
+        }
+      }
+    }
+    const routeConfig = this.config.rateLimiting.routes || {};
+    for (const route of Object.keys(routeConfig)) {
+      if (path === route || (route.endsWith('/*') && path.startsWith(route.slice(0, -2)))) {
+        const c = routeConfig[route];
+        return (c && (c[method] || c.default)) || null;
       }
     }
     return null;

@@ -31,8 +31,18 @@ class K9Shield {
 
       this.policyEngine = new PolicyEngine(this);
 
+      this.metrics = {
+        requestsAllowed: 0,
+        requestsBlocked: 0,
+        requestsThrottled: 0,
+        blocksByReason: {},
+        lastReset: Date.now()
+      };
+
       this.currentVersion = packageJson.version;
-      this.checkForUpdates();
+      if (this.config.updateCheck !== false) {
+        this.checkForUpdates();
+      }
 
       this.logger.log('info', 'K9Shield initialized successfully');
     } catch (error) {
@@ -43,58 +53,49 @@ class K9Shield {
 
   checkForUpdates() {
     try {
-      https
-        .get('https://registry.npmjs.org/k9shield', (res) => {
-          let data = '';
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
+      const MAX_RESPONSE_BYTES = 64 * 1024;
+      const req = https.get('https://registry.npmjs.org/k9shield/latest', (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return;
+        }
 
-          res.on('end', () => {
-            try {
-              const npmData = JSON.parse(data);
-              const latestVersion = npmData['dist-tags'].latest;
+        let data = '';
+        let bytesRead = 0;
 
-              if (semver.gt(latestVersion, this.currentVersion)) {
-                const updateMessage = `
-╔══════════════════════════════════════════════════════════════╗
-║                   K9SHIELD UPDATE AVAILABLE                  ║
-╠══════════════════════════════════════════════════════════════╣
-║ Current Version: ${this.currentVersion}                      ║
-║ Latest Version:  ${latestVersion}                            ║
-║                                                              ║
-║ Please update to the latest version:                         ║
-║ npm install k9shield@latest                                  ║
-║                                                              ║
-║ Security and performance improvements are available!         ║
-╚══════════════════════════════════════════════════════════════╝
-`;
-                console.warn(updateMessage);
+        res.on('data', (chunk) => {
+          bytesRead += chunk.length;
+          if (bytesRead > MAX_RESPONSE_BYTES) {
+            res.destroy();
+            return;
+          }
+          data += chunk;
+        });
 
-                this.logger.log(
-                  'warning',
-                  `K9Shield update available: ${latestVersion}`
-                );
-              }
-            } catch (parseError) {
-              this.logger.log(
-                'error',
-                `Error parsing NPM registry data: ${parseError.message}`
+        res.on('end', () => {
+          try {
+            const npmData = JSON.parse(data);
+            const latestVersion = npmData.version;
+            if (latestVersion && semver.gt(latestVersion, this.currentVersion)) {
+              this.logger.log('warning', `K9Shield update available: ${latestVersion}`);
+              console.warn(
+                `[K9Shield] Update available: ${this.currentVersion} → ${latestVersion}. Run: bun add k9shield@latest`
               );
             }
-          });
-        })
-        .on('error', (err) => {
-          this.logger.log(
-            'error',
-            `Error checking for updates: ${err.message}`
-          );
+          } catch (parseError) {
+            this.logger.log('error', `Error parsing NPM registry data: ${parseError.message}`);
+          }
         });
+      });
+
+      // abort if registry takes too long — prevents init-time hang
+      req.setTimeout(3000, () => req.destroy());
+
+      req.on('error', (err) => {
+        this.logger.log('error', `Error checking for updates: ${err.message}`);
+      });
     } catch (error) {
-      this.logger.log(
-        'error',
-        `Unexpected error in update check: ${error.message}`
-      );
+      this.logger.log('error', `Unexpected error in update check: ${error.message}`);
     }
   }
 
@@ -131,19 +132,28 @@ class K9Shield {
         const result = await this.policyEngine.evaluate(context);
 
         if (result.decision === 'ALLOW_BYPASS') {
+          this.metrics.requestsAllowed++;
+          this.emitSecurityEvent('allowed_bypass', { ip: clientIP, path: req.path });
           return next();
         }
 
         if (result.decision === 'BLOCK') {
+          this.metrics.requestsBlocked++;
+          const reason = result.reason || 'block';
+          this.metrics.blocksByReason[reason] = (this.metrics.blocksByReason[reason] || 0) + 1;
+          this.emitSecurityEvent('blocked', { ip: clientIP, reason, path: req.path, data: result.data });
           this.sendErrorResponse(res, result.reason, result.data);
           return;
         }
 
         if (result.decision === 'THROTTLE') {
+          this.metrics.requestsThrottled++;
+          this.emitSecurityEvent('throttled', { ip: clientIP, reason: result.reason, path: req.path, data: result.data });
           this.sendErrorResponse(res, result.reason, result.data);
           return;
         }
 
+        this.metrics.requestsAllowed++;
         this.headerManager.applySecurityHeaders(res, req);
 
         const endTime = Date.now();
@@ -338,6 +348,11 @@ class K9Shield {
       this.security.reset();
       this.rateLimiter.reset();
       this.logger.reset();
+      this.metrics.requestsAllowed = 0;
+      this.metrics.requestsBlocked = 0;
+      this.metrics.requestsThrottled = 0;
+      this.metrics.blocksByReason = {};
+      this.metrics.lastReset = Date.now();
       this.logger.log('info', 'K9Shield reset successfully');
     } catch (error) {
       this.logger.log('error', 'Error resetting K9Shield', {
@@ -345,6 +360,23 @@ class K9Shield {
       });
       throw error;
     }
+  }
+
+  emitSecurityEvent(event, payload) {
+    const fn = this.config.onSecurityEvent;
+    if (typeof fn === 'function') {
+      setImmediate(() => {
+        try {
+          fn(event, payload);
+        } catch (e) {
+          this.logger.log('error', `onSecurityEvent error: ${e.message}`);
+        }
+      });
+    }
+  }
+
+  getMetrics() {
+    return { ...this.metrics };
   }
 
   scanForSensitiveData(data) {

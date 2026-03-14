@@ -74,7 +74,7 @@ class ConfigValidator {
       throw new Error('logging.enable must be boolean');
     }
 
-    if (!this.LOG_LEVELS[logging.level]) {
+    if (!(logging.level in this.LOG_LEVELS)) {
       throw new Error(`Invalid log level: ${logging.level}`);
     }
 

@@ -1,6 +1,7 @@
 const defaultConfig = {
   security: {
-    trustProxy: true,
+    trustProxy: false,
+    trustedProxies: [],
     securityHeaders: {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
@@ -12,7 +13,12 @@ const defaultConfig = {
     maxBodySize: 1024 * 1024,
     requestHeaderWhitelist: [],
     userAgentBlacklist: [],
-    refererBlacklist: []
+    refererBlacklist: [],
+    checkStringMaxLength: 32 * 1024,
+    permissions: {},
+    csp: {},
+    corsOrigin: undefined,
+    csrfProtection: { enabled: false, originWhitelist: [] }
   },
   rateLimiting: {
     enabled: true,
@@ -24,7 +30,8 @@ const defaultConfig = {
       throttleDuration: 60000,
       throttleDelay: 1000
     },
-    routes: {}
+    routes: {},
+    routePatterns: []
   },
   ddosProtection: {
     enabled: true,
@@ -71,10 +78,15 @@ const defaultConfig = {
       internalError: {
         status: 500,
         message: 'An internal server error occurred'
-      }
+      },
+      csrfOriginMismatch: { status: 403, message: 'Invalid or missing Origin' },
+      csrfRefererMismatch: { status: 403, message: 'Invalid Referer' },
+      csrfInvalidReferer: { status: 403, message: 'Invalid Referer header' },
+      csrfMissingOriginOrReferer: { status: 403, message: 'Origin or Referer required' }
     }
   },
-  bypassRoutes: []
+  bypassRoutes: [],
+  onSecurityEvent: null
 };
 
 module.exports = defaultConfig;

@@ -1,9 +1,15 @@
+const MAX_TRACKED_IPS = 50000;
+const MAX_REQUESTS_PER_IP = 500;
+const MAX_PATTERNS_PER_IP = 100;
+const MAX_PATH_COUNTER_KEYS = 100000;
+
 class DDoSProtection {
   constructor(config, logger) {
     this.config = config;
     this.logger = logger;
     this.connections = new Map();
-    this.blockedIPs = new Set();
+    // stores expiry timestamps instead of bare membership to prevent timer race
+    this.blockedIPs = new Map();
     this.connectionStats = new Map();
     this.blockHistory = new Map();
     this.syncService = null;
@@ -44,12 +50,33 @@ class DDoSProtection {
 
     try {
       const now = Date.now();
+
+      // LRU eviction: evict IP with oldest lastRequest when at cap
+      if (!this.connectionStats.has(ip) && this.connectionStats.size >= MAX_TRACKED_IPS) {
+        let oldestIP = null;
+        let oldestTime = Infinity;
+        for (const [candIP, stats] of this.connectionStats) {
+          const t = stats.lastRequest || 0;
+          if (t < oldestTime) {
+            oldestTime = t;
+            oldestIP = candIP;
+          }
+        }
+        if (oldestIP != null) {
+          this.connectionStats.delete(oldestIP);
+          this.requestPatterns.delete(oldestIP);
+          this.anomalyScores.delete(oldestIP);
+        }
+      }
+
       const stats = this.getStats(ip);
       let anomalyScore = 0;
 
-      stats.connections++;
       stats.lastRequest = now;
-      stats.requests.push(now);
+      // cap stored timestamps to prevent unbounded growth per IP
+      if (stats.requests.length < MAX_REQUESTS_PER_IP) {
+        stats.requests.push(now);
+      }
       stats.totalRequests = (stats.totalRequests || 0) + 1;
 
       this.analyzeRequestPattern(ip, req);
@@ -66,11 +93,7 @@ class DDoSProtection {
         anomalyScore += 20;
       }
 
-      if (stats.connections > this.thresholds.maxConcurrentConnections) {
-        anomalyScore += 15;
-      }
-
-      const contentLength = parseInt(req.headers['content-length']) || 0;
+      const contentLength = parseInt(req.headers['content-length'], 10) || 0;
       if (contentLength > this.thresholds.maxPayloadSize) {
         anomalyScore += 25;
       }
@@ -102,12 +125,11 @@ class DDoSProtection {
         return true;
       }
 
-      if (this.isPathRateLimitExceeded(req.path, stats)) {
+      if (this.isPathRateLimitExceeded(req.path, ip, now)) {
         this.handleAttack(ip, res, anomalyScore, req);
         return true;
       }
 
-      this.connectionStats.set(ip, stats);
       return false;
     } catch (error) {
       this.logger.log('error', `Error in DDoS check: ${error.message}`);
@@ -148,8 +170,7 @@ class DDoSProtection {
 
   handleAttack(ip, res, score, req) {
     try {
-      this.blockedIPs.add(ip);
-
+      const now = Date.now();
       const blockCount = (this.blockHistory.get(ip) || []).length + 1;
       const blockDuration = Math.min(
         this.config.ddosProtection.config.blockDuration *
@@ -157,9 +178,14 @@ class DDoSProtection {
         this.thresholds.maxBlockDuration
       );
 
+      const newExpiry = now + blockDuration;
+      // extend existing block if already blocked for longer duration
+      const existingExpiry = this.blockedIPs.get(ip) || 0;
+      this.blockedIPs.set(ip, Math.max(existingExpiry, newExpiry));
+
       const history = this.blockHistory.get(ip) || [];
       history.push({
-        timestamp: Date.now(),
+        timestamp: now,
         duration: blockDuration,
         score: score,
         method: req ? req.method : 'unknown',
@@ -179,13 +205,6 @@ class DDoSProtection {
       if (this.syncService) {
         this.syncService.reportAttack(ip, blockDuration, score);
       }
-
-      this.logger.log('warning', `DDoS attack blocked`, req);
-
-      setTimeout(() => {
-        this.blockedIPs.delete(ip);
-        this.logger.log('info', `DDoS block removed for IP ${ip}`, req);
-      }, blockDuration);
 
       return {
         message: 'Suspicious traffic pattern detected',
@@ -218,13 +237,13 @@ class DDoSProtection {
       }
 
       const patterns = this.requestPatterns.get(ip);
-      patterns.push(pattern);
-
-      if (patterns.length > 100) {
-        patterns.shift();
+      // use index-based overwrite (ring buffer behaviour) instead of shift() O(n)
+      if (patterns.length >= MAX_PATTERNS_PER_IP) {
+        patterns[patterns._head || 0] = pattern;
+        patterns._head = ((patterns._head || 0) + 1) % MAX_PATTERNS_PER_IP;
+      } else {
+        patterns.push(pattern);
       }
-
-      this.requestPatterns.set(ip, patterns);
     } catch (error) {
       this.logger.log(
         'error',
@@ -280,13 +299,7 @@ class DDoSProtection {
       const currentScore = this.anomalyScores.get(ip) || 0;
       const newScore = Math.min(currentScore + score, 1000);
       this.anomalyScores.set(ip, newScore);
-
-      setTimeout(() => {
-        const score = this.anomalyScores.get(ip);
-        if (score) {
-          this.anomalyScores.set(ip, Math.max(0, score - 10));
-        }
-      }, 60000);
+      // decay is handled by the periodic updateAnomalyScores() job — no per-request timers
     } catch (error) {
       this.logger.log(
         'error',
@@ -303,14 +316,37 @@ class DDoSProtection {
     );
   }
 
-  isPathRateLimitExceeded(path, stats) {
+  isPathRateLimitExceeded(path, ip, now) {
     const config = this.config.ddosProtection.config.rateLimitByPath;
+    if (!this._pathCounters) this._pathCounters = new Map();
+    if (this._pathCounters.size >= MAX_PATH_COUNTER_KEYS) {
+      this.evictOldestPathCounters(now);
+    }
     for (const [pattern, limit] of Object.entries(config)) {
-      if (this.matchPath(path, pattern) && stats.requests.length > limit) {
-        return true;
-      }
+      if (!this.matchPath(path, pattern)) continue;
+      const pathKey = `${ip}:${pattern}`;
+      const bucket = this._pathCounters.get(pathKey) || [];
+      const recent = bucket.filter((t) => now - t < 60000);
+      recent.push(now);
+      this._pathCounters.set(pathKey, recent);
+      if (recent.length > limit) return true;
     }
     return false;
+  }
+
+  evictOldestPathCounters(now) {
+    if (!this._pathCounters || this._pathCounters.size < MAX_PATH_COUNTER_KEYS) return;
+    const byOldest = [];
+    for (const [key, bucket] of this._pathCounters) {
+      const times = bucket.filter((t) => now - t < 60000);
+      const oldestInBucket = times.length > 0 ? Math.min(...times) : now;
+      byOldest.push({ key, oldest: oldestInBucket });
+    }
+    byOldest.sort((a, b) => a.oldest - b.oldest);
+    const toRemove = Math.ceil(MAX_PATH_COUNTER_KEYS * 0.1);
+    for (let i = 0; i < toRemove && i < byOldest.length; i++) {
+      this._pathCounters.delete(byOldest[i].key);
+    }
   }
 
   matchPath(path, pattern) {
@@ -325,7 +361,6 @@ class DDoSProtection {
   getStats(ip) {
     if (!this.connectionStats.has(ip)) {
       this.connectionStats.set(ip, {
-        connections: 0,
         requests: [],
         slowRequests: 0,
         lastRequest: Date.now(),
@@ -391,6 +426,23 @@ class DDoSProtection {
         }
       }
 
+      // purge expired block entries (Map<ip, expiryTs>)
+      for (const [ip, expiry] of this.blockedIPs) {
+        if (now >= expiry) this.blockedIPs.delete(ip);
+      }
+
+      // purge path rate-limit buckets
+      if (this._pathCounters) {
+        for (const [key, bucket] of this._pathCounters) {
+          const fresh = bucket.filter((t) => now - t < 60000);
+          if (fresh.length === 0) {
+            this._pathCounters.delete(key);
+          } else {
+            this._pathCounters.set(key, fresh);
+          }
+        }
+      }
+
       for (const [ip, history] of this.blockHistory) {
         const cleanHistory = history.filter(
           (entry) => now - entry.timestamp < 24 * 60 * 60 * 1000
@@ -431,7 +483,12 @@ class DDoSProtection {
   }
 
   isBlocked(ip) {
-    return this.blockedIPs.has(ip);
+    const expiry = this.blockedIPs.get(ip);
+    if (expiry === undefined) return false;
+    if (Date.now() < expiry) return true;
+    // lazily remove expired entries
+    this.blockedIPs.delete(ip);
+    return false;
   }
 }
 

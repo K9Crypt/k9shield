@@ -3,7 +3,7 @@ const Rule = require('../Rule');
 function createBypassRouteRule(k9shield) {
   return new Rule({
     name: 'BypassRouteRule',
-    priority: 190,
+    priority: 85,
     condition: async (context) => {
       return k9shield.shouldBypassRoute(context.req.path);
     },
