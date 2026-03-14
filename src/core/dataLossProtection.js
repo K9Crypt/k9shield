@@ -139,10 +139,10 @@ class DataLossPreventionManager {
       return configKey;
     }
 
-    // ephemeral key — encrypted data will not survive restarts; warn loudly
+    // Ephemeral key: encrypted data will not survive restarts; warn loudly.
     const ephemeral = crypto.randomBytes(32).toString('hex');
     console.warn(
-      '[K9Shield] WARNING: DLP encryption key not configured. Using ephemeral key — ' +
+      '[K9Shield] WARNING: DLP encryption key not configured. Using ephemeral key; ' +
       'encrypted data cannot be decrypted after restart. Set config.dlp.encryptionKey or K9SHIELD_DLP_KEY env var.'
     );
     return ephemeral;

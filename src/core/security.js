@@ -1,4 +1,4 @@
-const CHECK_STRING_MAX_LENGTH = 32 * 1024; // 32KB — cap to reduce CPU/memory and ReDoS surface
+const CHECK_STRING_MAX_LENGTH = 32 * 1024; // 32KB cap to reduce CPU/memory and ReDoS surface
 
 class Security {
   constructor(config, logger, ipUtils) {
@@ -189,6 +189,24 @@ class Security {
         req
       );
       return false;
+    }
+    return true;
+  }
+
+  checkUserAgent(req, res, ip) {
+    const list = this.config.security.userAgentBlacklist;
+    if (!Array.isArray(list) || list.length === 0) return true;
+    const ua = (req.headers['user-agent'] || '').trim();
+    for (const entry of list) {
+      if (typeof entry === 'string') {
+        if (ua.toLowerCase().includes(entry.toLowerCase())) {
+          this.logger.log('warning', `Blocked User-Agent from ${ip}`, req);
+          return false;
+        }
+      } else if (entry instanceof RegExp && entry.test(ua)) {
+        this.logger.log('warning', `Blocked User-Agent (pattern) from ${ip}`, req);
+        return false;
+      }
     }
     return true;
   }

@@ -238,7 +238,7 @@ class HeaderManager {
 
       if (allowedOrigins === '*') {
         headers['Access-Control-Allow-Origin'] = '*';
-        // wildcard origin is incompatible with credentials — omit the header
+        // Wildcard origin is incompatible with credentials; omit the header.
       } else if (
         Array.isArray(allowedOrigins) &&
         allowedOrigins.includes(origin)

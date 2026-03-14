@@ -88,7 +88,7 @@ class K9Shield {
         });
       });
 
-      // abort if registry takes too long — prevents init-time hang
+      // Abort if registry takes too long so init does not hang.
       req.setTimeout(3000, () => req.destroy());
 
       req.on('error', (err) => {
@@ -142,6 +142,7 @@ class K9Shield {
           const reason = result.reason || 'block';
           this.metrics.blocksByReason[reason] = (this.metrics.blocksByReason[reason] || 0) + 1;
           this.emitSecurityEvent('blocked', { ip: clientIP, reason, path: req.path, data: result.data });
+          this.headerManager.applySecurityHeaders(res, req);
           this.sendErrorResponse(res, result.reason, result.data);
           return;
         }
@@ -149,6 +150,7 @@ class K9Shield {
         if (result.decision === 'THROTTLE') {
           this.metrics.requestsThrottled++;
           this.emitSecurityEvent('throttled', { ip: clientIP, reason: result.reason, path: req.path, data: result.data });
+          this.headerManager.applySecurityHeaders(res, req);
           this.sendErrorResponse(res, result.reason, result.data);
           return;
         }
@@ -347,6 +349,7 @@ class K9Shield {
     try {
       this.security.reset();
       this.rateLimiter.reset();
+      this.ddosProtection.reset();
       this.logger.reset();
       this.metrics.requestsAllowed = 0;
       this.metrics.requestsBlocked = 0;

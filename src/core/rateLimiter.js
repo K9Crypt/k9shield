@@ -20,7 +20,7 @@ class RateLimiter {
     }
     if (throttle) this.throttledIPs.delete(ip);
 
-    // amortise cleanup cost — run at most once every CLEANUP_INTERVAL_MS
+    // Amortise cleanup cost: run at most once every CLEANUP_INTERVAL_MS
     const now = Date.now();
     if (now - this._lastCleanup > CLEANUP_INTERVAL_MS) {
       this.cleanupOldEntries();

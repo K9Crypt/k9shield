@@ -82,7 +82,8 @@ const defaultConfig = {
       csrfOriginMismatch: { status: 403, message: 'Invalid or missing Origin' },
       csrfRefererMismatch: { status: 403, message: 'Invalid Referer' },
       csrfInvalidReferer: { status: 403, message: 'Invalid Referer header' },
-      csrfMissingOriginOrReferer: { status: 403, message: 'Origin or Referer required' }
+      csrfMissingOriginOrReferer: { status: 403, message: 'Origin or Referer required' },
+      userAgentBlocked: { status: 403, message: 'User-Agent not allowed' }
     }
   },
   bypassRoutes: [],

@@ -15,6 +15,14 @@ function createSecurityPolicyRule(k9shield) {
         return true;
       }
 
+      if (!k9shield.security.checkUserAgent(req, res, ip)) {
+        context.securityDecision = {
+          decision: 'BLOCK',
+          reason: 'userAgentBlocked'
+        };
+        return true;
+      }
+
       if (!k9shield.security.checkPayloadSize(req, res, ip)) {
         context.securityDecision = {
           decision: 'BLOCK',

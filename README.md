@@ -35,6 +35,7 @@ const shield = new K9Shield({
   logging: { enable: true, level: 'info', maxLogSize: 5000, archiveLimit: 5, archives: [] }
 });
 
+// Mount protect() before any routes so disallowed methods get 405 from K9Shield, not 404 from Express.
 app.use(shield.protect());
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 app.listen(3000);
@@ -60,14 +61,14 @@ Bypass routes are evaluated after blacklist and DDoS; a blocked IP cannot use a 
 
 Constructor accepts a single options object. Main sections:
 
-- **security** — `trustProxy`, `trustedProxies`, `allowPrivateIPs`, `maxBodySize`, `allowedMethods`, `requestHeaderWhitelist`, `securityHeaders`, `csp`, `permissions`, `corsOrigin`, `csrfProtection` (optional)
-- **rateLimiting** — `enabled`, `default` (maxRequests, timeWindow, banDuration, retryAfter, throttleDuration, throttleDelay), `routes`, `routePatterns`
-- **ddosProtection** — `enabled`, `config` (timeWindow, blockDuration, requestThreshold, burstThreshold, slowRequestThreshold, rateLimitByPath)
-- **logging** — `enable`, `level`, `maxLogSize`, `archiveLimit`, `archives`
-- **errorHandling** — `customHandlers`, `defaultResponses` (per reason code)
-- **bypassRoutes** — array of path strings or RegExp
-- **onSecurityEvent** — optional `(event, payload) => {}` callback
-- **updateCheck** — set `false` to disable npm version check on startup
+- **security**: `trustProxy`, `trustedProxies`, `allowPrivateIPs`, `maxBodySize`, `allowedMethods`, `requestHeaderWhitelist`, `securityHeaders`, `csp`, `permissions`, `corsOrigin`, `csrfProtection` (optional)
+- **rateLimiting**: `enabled`, `default` (maxRequests, timeWindow, banDuration, retryAfter, throttleDuration, throttleDelay), `routes`, `routePatterns`
+- **ddosProtection**: `enabled`, `config` (timeWindow, blockDuration, requestThreshold, burstThreshold, slowRequestThreshold, rateLimitByPath)
+- **logging**: `enable`, `level`, `maxLogSize`, `archiveLimit`, `archives`
+- **errorHandling**: `customHandlers`, `defaultResponses` (per reason code)
+- **bypassRoutes**: array of path strings or RegExp
+- **onSecurityEvent**: optional `(event, payload) => {}` callback
+- **updateCheck**: set `false` to disable npm version check on startup
 
 Behind a reverse proxy, set `security.trustProxy: true` and `security.trustedProxies` to proxy CIDRs or IPs. Client IP is taken from the first non-trusted hop in `X-Forwarded-For` (right to left).
 
@@ -155,7 +156,8 @@ const shield = new K9Shield({
       internalError:      { status: 500, message: 'Internal server error' },
       csrfOriginMismatch: { status: 403, message: 'Invalid or missing Origin' },
       csrfRefererMismatch: { status: 403, message: 'Invalid Referer' },
-      csrfMissingOriginOrReferer: { status: 403, message: 'Origin or Referer required' }
+      csrfMissingOriginOrReferer: { status: 403, message: 'Origin or Referer required' },
+      userAgentBlocked: { status: 403, message: 'User-Agent not allowed' }
     }
   },
 
@@ -165,11 +167,11 @@ const shield = new K9Shield({
 });
 ```
 
-- **security** — Proxy and IP: `trustProxy`, `trustedProxies`, `allowPrivateIPs`. Limits: `maxBodySize`, `checkStringMaxLength`, `allowedMethods`, `requestHeaderWhitelist`. Lists: `userAgentBlacklist`, `refererBlacklist`. Headers: `securityHeaders`, `csp`, `permissions`, `corsOrigin`. Optional: `csrfProtection` (`enabled`, `originWhitelist`, `requireOriginOrReferer`).
-- **rateLimiting.default** — `maxRequests`, `timeWindow` (ms), `banDuration`, `retryAfter` (s), `throttleDuration`, `throttleDelay`. **routes** — path → method → same shape. **routePatterns** — `[{ pattern: string|RegExp, config: { [method]: {...}, default: {...} } }]`.
-- **ddosProtection.config** — `timeWindow`, `blockDuration`, `requestThreshold`, `burstThreshold`, `slowRequestThreshold`, `rateLimitByPath` (path pattern → max req/min).
-- **errorHandling.customHandlers** — reason code → `(res, data) => {}`. **defaultResponses** — reason code → `{ status, message }`.
-- **onSecurityEvent** — `(event, payload) => {}` for `blocked`, `throttled`, `allowed_bypass`.
+- **security**: Proxy and IP: `trustProxy`, `trustedProxies`, `allowPrivateIPs`. Limits: `maxBodySize`, `checkStringMaxLength`, `allowedMethods`, `requestHeaderWhitelist`. Lists: `userAgentBlacklist` (strings or RegExp; block matching User-Agent), `refererBlacklist`. Headers: `securityHeaders`, `csp`, `permissions`, `corsOrigin`. Optional: `csrfProtection` (`enabled`, `originWhitelist`, `requireOriginOrReferer`).
+- **rateLimiting.default**: `maxRequests`, `timeWindow` (ms), `banDuration`, `retryAfter` (s), `throttleDuration`, `throttleDelay`. **routes**: path to method to same shape. **routePatterns**: `[{ pattern: string|RegExp, config: { [method]: {...}, default: {...} } }]`.
+- **ddosProtection.config**: `timeWindow`, `blockDuration`, `requestThreshold`, `burstThreshold`, `slowRequestThreshold`, `rateLimitByPath` (path pattern to max req/min).
+- **errorHandling.customHandlers**: reason code to `(res, data) => {}`. **defaultResponses**: reason code to `{ status, message }`.
+- **onSecurityEvent**: `(event, payload) => {}` for `blocked`, `throttled`, `allowed_bypass`.
 
 ## API
 
@@ -246,5 +248,5 @@ Block state uses per-IP expiry; repeated offences increase block duration (cappe
 
 ---
 
-**License:** MIT — [LICENSE](./LICENSE)  
+**License:** MIT. See [LICENSE](./LICENSE).  
 **Contact:** hi@k9crypt.xyz

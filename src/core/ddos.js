@@ -299,7 +299,7 @@ class DDoSProtection {
       const currentScore = this.anomalyScores.get(ip) || 0;
       const newScore = Math.min(currentScore + score, 1000);
       this.anomalyScores.set(ip, newScore);
-      // decay is handled by the periodic updateAnomalyScores() job — no per-request timers
+      // Decay is handled by the periodic updateAnomalyScores() job; no per-request timers.
     } catch (error) {
       this.logger.log(
         'error',
@@ -489,6 +489,15 @@ class DDoSProtection {
     // lazily remove expired entries
     this.blockedIPs.delete(ip);
     return false;
+  }
+
+  reset() {
+    this.connectionStats.clear();
+    this.blockedIPs.clear();
+    this.blockHistory.clear();
+    this.requestPatterns.clear();
+    this.anomalyScores.clear();
+    if (this._pathCounters) this._pathCounters.clear();
   }
 }
 
