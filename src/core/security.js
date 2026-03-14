@@ -193,13 +193,37 @@ class Security {
     return true;
   }
 
+  /**
+   * Parses a string like "/pattern/flags" into a RegExp. Returns null if not a valid regex string.
+   * Used so userAgentBlacklist can be set from JSON config (e.g. ["/bot/i", "/crawler/i"]).
+   */
+  _parseRegexFromString(str) {
+    if (typeof str !== 'string' || !str.startsWith('/') || str.length < 2) return null;
+    const lastSlash = str.lastIndexOf('/');
+    if (lastSlash <= 0) return null;
+    const pattern = str.slice(1, lastSlash);
+    const flags = str.slice(lastSlash + 1);
+    if (flags !== '' && !/^[gimsuy]*$/.test(flags)) return null;
+    try {
+      return new RegExp(pattern, flags);
+    } catch (e) {
+      return null;
+    }
+  }
+
   checkUserAgent(req, res, ip) {
     const list = this.config.security.userAgentBlacklist;
     if (!Array.isArray(list) || list.length === 0) return true;
     const ua = (req.headers['user-agent'] || '').trim();
     for (const entry of list) {
       if (typeof entry === 'string') {
-        if (ua.toLowerCase().includes(entry.toLowerCase())) {
+        const regex = this._parseRegexFromString(entry);
+        if (regex) {
+          if (regex.test(ua)) {
+            this.logger.log('warning', `Blocked User-Agent (pattern) from ${ip}`, req);
+            return false;
+          }
+        } else if (ua.toLowerCase().includes(entry.toLowerCase())) {
           this.logger.log('warning', `Blocked User-Agent from ${ip}`, req);
           return false;
         }

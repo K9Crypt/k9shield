@@ -35,8 +35,11 @@ const shield = new K9Shield({
   logging: { enable: true, level: 'info', maxLogSize: 5000, archiveLimit: 5, archives: [] }
 });
 
-// Mount protect() before any routes so disallowed methods get 405 from K9Shield, not 404 from Express.
+// Mount protect() before body-parser so payload size is checked by Content-Length and your custom 413 response is used.
 app.use(shield.protect());
+app.use(express.json({ limit: '1mb' }));
+// If body-parser rejects a body (e.g. chunked over limit), use K9Shield's custom 413 response:
+app.use(shield.payloadTooLargeHandler());
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 app.listen(3000);
 ```
@@ -167,7 +170,7 @@ const shield = new K9Shield({
 });
 ```
 
-- **security**: Proxy and IP: `trustProxy`, `trustedProxies`, `allowPrivateIPs`. Limits: `maxBodySize`, `checkStringMaxLength`, `allowedMethods`, `requestHeaderWhitelist`. Lists: `userAgentBlacklist` (strings or RegExp; block matching User-Agent), `refererBlacklist`. Headers: `securityHeaders`, `csp`, `permissions`, `corsOrigin`. Optional: `csrfProtection` (`enabled`, `originWhitelist`, `requireOriginOrReferer`).
+- **security**: Proxy and IP: `trustProxy`, `trustedProxies`, `allowPrivateIPs`. Limits: `maxBodySize`, `checkStringMaxLength`, `allowedMethods`, `requestHeaderWhitelist`. Lists: `userAgentBlacklist` (strings, RegExp, or regex strings like `"/bot/i"`; block matching User-Agent), `refererBlacklist`. Headers: `securityHeaders`, `csp`, `permissions`, `corsOrigin`. Optional: `csrfProtection` (`enabled`, `originWhitelist`, `requireOriginOrReferer`).
 - **rateLimiting.default**: `maxRequests`, `timeWindow` (ms), `banDuration`, `retryAfter` (s), `throttleDuration`, `throttleDelay`. **routes**: path to method to same shape. **routePatterns**: `[{ pattern: string|RegExp, config: { [method]: {...}, default: {...} } }]`.
 - **ddosProtection.config**: `timeWindow`, `blockDuration`, `requestThreshold`, `burstThreshold`, `slowRequestThreshold`, `rateLimitByPath` (path pattern to max req/min).
 - **errorHandling.customHandlers**: reason code to `(res, data) => {}`. **defaultResponses**: reason code to `{ status, message }`.
@@ -177,7 +180,8 @@ const shield = new K9Shield({
 
 | Method | Description |
 |--------|-------------|
-| `shield.protect()` | Express middleware. Mount with `app.use(shield.protect())`. |
+| `shield.protect()` | Express middleware. Mount before body-parser so size and custom 413 apply. |
+| `shield.payloadTooLargeHandler()` | Error middleware for body-parser 413. Mount after body-parser to use custom payloadTooLarge response. |
 | `shield.blockIP(ip)` / `shield.unblockIP(ip)` | Add or remove IP (or CIDR) from blacklist. |
 | `shield.whitelistIP(ip)` / `shield.unwhitelistIP(ip)` | Add or remove IP (or CIDR) from whitelist. |
 | `shield.addSuspiciousPattern(regex)` | Register a pattern for request scanning. |

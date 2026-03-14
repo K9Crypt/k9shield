@@ -199,6 +199,25 @@ class K9Shield {
     });
   }
 
+  /**
+   * Express error-handling middleware for body-parser "payload too large" (413).
+   * Mount this after body-parser so when body-parser calls next(err) with entity.too.large,
+   * K9Shield sends the configured payloadTooLarge response instead of Express default HTML.
+   * Usage: app.use(shield.protect()); app.use(express.json()); app.use(shield.payloadTooLargeHandler());
+   */
+  payloadTooLargeHandler() {
+    return (err, req, res, next) => {
+      const isPayloadTooLarge =
+        (err && err.type === 'entity.too.large') || (err && err.status === 413);
+      if (isPayloadTooLarge) {
+        this.headerManager.applySecurityHeaders(res, req);
+        this.sendErrorResponse(res, 'payloadTooLarge');
+        return;
+      }
+      next(err);
+    };
+  }
+
   sendErrorResponse(res, errorType, additionalData = {}) {
     try {
       const customHandler = this.config.errorHandling.customHandlers[errorType];
