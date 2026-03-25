@@ -17,43 +17,99 @@ class Logger {
     this.config = config;
     this.logs = [];
     this.externalLogService = null;
+    this.logArchiveStore = null;
+    this._samplingBuckets = new Map();
   }
 
   sanitizeField(value, maxLen = 256) {
     if (typeof value !== 'string') return null;
-    // strip CR/LF/ANSI/control chars to prevent log injection
     return value.replace(/[\r\n\t\x00-\x1f\x7f\x1b]/g, ' ').slice(0, maxLen);
+  }
+
+  shouldSample(logEntry) {
+    const sampling = this.config.logging?.sampling;
+    if (!sampling || sampling.enabled !== true) return true;
+
+    const windowMs = sampling.windowMs || 10000;
+    const maxEntries = sampling.maxEntriesPerInterval || 250;
+    const key = [
+      logEntry.type,
+      logEntry.message,
+      logEntry.method || '',
+      logEntry.path || ''
+    ].join('|');
+    const now = Date.now();
+    const bucket = this._samplingBuckets.get(key);
+
+    if (!bucket || now - bucket.windowStart >= windowMs) {
+      this._samplingBuckets.set(key, {
+        windowStart: now,
+        count: 1
+      });
+      return true;
+    }
+
+    bucket.count += 1;
+    if (bucket.count <= maxEntries) {
+      return true;
+    }
+
+    return false;
+  }
+
+  cleanupSamplingBuckets(now = Date.now()) {
+    const windowMs = this.config.logging?.sampling?.windowMs || 10000;
+    for (const [key, bucket] of this._samplingBuckets.entries()) {
+      if (now - bucket.windowStart >= windowMs) {
+        this._samplingBuckets.delete(key);
+      }
+    }
   }
 
   async log(type, message, req = null) {
     if (
       !this.config.logging.enable ||
       LOG_LEVELS[type] < LOG_LEVELS[this.config.logging.level]
-    )
+    ) {
       return;
+    }
 
     const isReqObj = req && typeof req === 'object' && req.method && req.path;
-
     const logEntry = {
       timestamp: new Date().toISOString(),
       type,
       message: this.sanitizeField(String(message), 1024),
       method: isReqObj ? req.method : null,
       path: isReqObj ? this.sanitizeField(req.path) : null,
-      userAgent: isReqObj && req.headers ? this.sanitizeField(req.headers['user-agent']) : null,
-      referer: isReqObj && req.headers ? this.sanitizeField(req.headers['referer']) : null
+      userAgent:
+        isReqObj && req.headers
+          ? this.sanitizeField(req.headers['user-agent'])
+          : null,
+      referer:
+        isReqObj && req.headers
+          ? this.sanitizeField(req.headers.referer)
+          : null
     };
+
+    if (!this.shouldSample(logEntry)) {
+      return;
+    }
 
     setImmediate(() => {
       this.logs.push(logEntry);
+      this.cleanupSamplingBuckets();
 
       const suffix = [
-        logEntry.method && logEntry.path ? ` (${logEntry.method} ${logEntry.path})` : '',
+        logEntry.method && logEntry.path
+          ? ` (${logEntry.method} ${logEntry.path})`
+          : '',
         logEntry.userAgent ? ` UA: ${logEntry.userAgent}` : '',
         logEntry.referer ? ` Ref: ${logEntry.referer}` : ''
       ].join('');
 
-      console.log(`[K9Shield] ${logEntry.timestamp} - ${type}: ${logEntry.message}${suffix}`);
+      console.log(
+        `[K9Shield] ${logEntry.timestamp} - ${type}: ${logEntry.message}${suffix}`
+      );
 
       if (this.logs.length >= this.config.logging.maxLogSize) {
         this.rotateAndArchiveLogs().catch((error) => {
@@ -79,7 +135,6 @@ class Logger {
       if (this.logs.length >= this.config.logging.maxLogSize) {
         const archiveTimestamp = new Date().toISOString();
         const logsToArchive = this.logs.slice(0);
-
         this.logs = [];
 
         const archive = {
@@ -108,19 +163,15 @@ class Logger {
           this.config.logging.archives.unshift(archive);
         }
 
-        if (
-          this.config.logging.archives.length > this.config.logging.archiveLimit
-        ) {
+        if (this.config.logging.archives.length > this.config.logging.archiveLimit) {
           const excessArchives = this.config.logging.archives.splice(
             this.config.logging.archiveLimit
           );
 
           if (this.logArchiveStore && excessArchives.length > 0) {
-            this.logArchiveStore
-              .archiveOldLogs(excessArchives)
-              .catch((error) => {
-                console.error('Error archiving old logs:', error);
-              });
+            this.logArchiveStore.archiveOldLogs(excessArchives).catch((error) => {
+              console.error('Error archiving old logs:', error);
+            });
           }
         }
 
@@ -128,8 +179,8 @@ class Logger {
           this.log('info', `Log rotation performed at ${archiveTimestamp}`);
         });
       }
-    } catch (e) {
-      console.error('Log rotation failed:', e);
+    } catch (error) {
+      console.error('Log rotation failed:', error);
       this.logs = [];
     }
   }
@@ -144,6 +195,7 @@ class Logger {
 
   reset() {
     this.logs = [];
+    this._samplingBuckets.clear();
   }
 }
 

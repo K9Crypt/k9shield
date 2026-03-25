@@ -6,16 +6,31 @@ class IPUtils {
     this.logger = logger;
   }
 
+  stripPort(raw) {
+    if (typeof raw !== 'string') return raw;
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[')) {
+      const bracketEnd = trimmed.indexOf(']');
+      return bracketEnd > -1 ? trimmed.slice(1, bracketEnd) : trimmed;
+    }
+    const colonCount = (trimmed.match(/:/g) || []).length;
+    if (colonCount === 1 && trimmed.includes('.')) {
+      return trimmed.slice(0, trimmed.lastIndexOf(':'));
+    }
+    return trimmed;
+  }
+
   normalizeIP(raw) {
     if (!raw) return null;
     try {
-      const addr = ipaddr.parse(raw.trim());
+      const cleaned = this.stripPort(raw);
+      const addr = ipaddr.parse(cleaned.trim());
       if (addr.kind() === 'ipv6') {
         if (addr.isIPv4MappedAddress()) return addr.toIPv4Address().toString();
-        if (raw.trim() === '::1') return '127.0.0.1';
+        if (cleaned.trim() === '::1') return '127.0.0.1';
       }
       return addr.toString();
-    } catch (e) {
+    } catch (error) {
       return null;
     }
   }
@@ -31,22 +46,19 @@ class IPUtils {
 
   getClientIP(req) {
     try {
-      const peerRaw =
-        req.socket?.remoteAddress ||
-        req.connection?.remoteAddress ||
-        null;
-
+      const peerRaw = req.socket?.remoteAddress || req.connection?.remoteAddress || null;
       const peerIP = this.normalizeIP(peerRaw);
 
-      // only honour forwarded headers when the direct peer is an explicitly trusted proxy
       if (this.config.security.trustProxy && peerIP && this.isPeerTrusted(peerIP)) {
         const xff = req.headers['x-forwarded-for'];
         if (xff) {
-          // walk right-to-left; return first untrusted hop
-          const chain = xff.split(',').map((s) => s.trim()).reverse();
-          for (const hop of chain) {
-            const hopIP = this.normalizeIP(hop);
-            if (hopIP && !this.isPeerTrusted(hopIP)) return hopIP;
+          const chain = xff
+            .split(',')
+            .map((segment) => this.normalizeIP(segment))
+            .filter(Boolean)
+            .reverse();
+          for (const hopIP of chain) {
+            if (!this.isPeerTrusted(hopIP)) return hopIP;
           }
         }
 
@@ -59,7 +71,7 @@ class IPUtils {
 
       if (peerIP) {
         if (this.isPrivateIP(peerIP) && !this.config.security.allowPrivateIPs) {
-          if (process.env.NODE_ENV !== 'development') {
+          if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
             this.logger.log('warning', `Private IP blocked: ${peerIP}`);
             return null;
           }
@@ -67,14 +79,13 @@ class IPUtils {
         return peerIP;
       }
 
-      // last resort: req.ip set by Express trust proxy chain
       const fallback = this.normalizeIP(req.ip);
       if (fallback) return fallback;
 
       this.logger.log('warning', 'Unable to determine client IP');
       return null;
-    } catch (e) {
-      this.logger.log('error', `IP processing error: ${e.message}`);
+    } catch (error) {
+      this.logger.log('error', `IP processing error: ${error.message}`);
       return null;
     }
   }
@@ -88,8 +99,8 @@ class IPUtils {
         addr.range() === 'linkLocal' ||
         addr.range() === 'uniqueLocal'
       );
-    } catch (e) {
-      this.logger.log('warning', `Private IP check error: ${e.message}`);
+    } catch (error) {
+      this.logger.log('warning', `Private IP check error: ${error.message}`);
       return false;
     }
   }
@@ -110,48 +121,40 @@ class IPUtils {
         return ipaddr.parse(ip).toString() === ipaddr.parse(entry).toString();
       }
       return false;
-    } catch (e) {
+    } catch (error) {
       this.logger.log(
         'warning',
-        `IP matching error: ${e.message}, IP: ${ip}, Entry: ${entry}`
+        `IP matching error: ${error.message}, IP: ${ip}, Entry: ${entry}`
       );
       return false;
     }
   }
 
-  /**
-   * Parse a CIDR string into [addr, prefixLen]. Returns null if not a valid CIDR.
-   * Used to cache parsed CIDRs for O(1) match without re-parsing.
-   */
   parseCIDR(entry) {
     if (!entry || typeof entry !== 'string' || !entry.includes('/')) return null;
     try {
       return ipaddr.parseCIDR(entry.trim());
-    } catch (e) {
+    } catch (error) {
       return null;
     }
   }
 
-  /**
-   * Check if IP matches any of the pre-parsed CIDR ranges.
-   * parsedRanges: array of [addr, prefixLen] from parseCIDR.
-   * Avoids re-parsing on every request (performance).
-   */
   matchIPInParsedRanges(ip, parsedRanges) {
     if (!ip || !Array.isArray(parsedRanges) || parsedRanges.length === 0) return false;
     try {
       const addr = ipaddr.parse(ip);
       for (const range of parsedRanges) {
-        if (!range || !Array.isArray(range)) continue;
+        const parsed = Array.isArray(range) ? range : range?.parsed;
+        if (!parsed || !Array.isArray(parsed)) continue;
         try {
-          if (addr.kind() === range[0].kind() && addr.match(range)) return true;
-        } catch (e) {
-          // skip invalid range
+          if (addr.kind() === parsed[0].kind() && addr.match(parsed)) return true;
+        } catch (error) {
+          continue;
         }
       }
       return false;
-    } catch (e) {
-      this.logger.log('debug', `matchIPInParsedRanges error: ${e.message}`);
+    } catch (error) {
+      this.logger.log('debug', `matchIPInParsedRanges error: ${error.message}`);
       return false;
     }
   }

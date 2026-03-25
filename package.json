@@ -4,7 +4,7 @@
   "description": "An Express.js middleware library providing military-grade web application security.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "keywords": [
     "security",
@@ -56,8 +56,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "crypto": "^1.0.1",
-    "https": "^1.0.0",
     "ipaddr.js": "^2.3.0",
     "k9crypt": "^1.1.9",
     "semver": "^7.7.4"

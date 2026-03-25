@@ -6,7 +6,6 @@ function createSecurityPolicyRule(k9shield) {
     priority: 80,
     condition: async (context) => {
       const { req, res, ip } = context;
-
       if (!k9shield.security.checkRequestMethod(req, res, ip)) {
         context.securityDecision = {
           decision: 'BLOCK',
@@ -19,6 +18,14 @@ function createSecurityPolicyRule(k9shield) {
         context.securityDecision = {
           decision: 'BLOCK',
           reason: 'userAgentBlocked'
+        };
+        return true;
+      }
+
+      if (!k9shield.security.checkReferer(req, ip)) {
+        context.securityDecision = {
+          decision: 'BLOCK',
+          reason: 'refererBlocked'
         };
         return true;
       }

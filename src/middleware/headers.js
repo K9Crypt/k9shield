@@ -9,8 +9,7 @@ class HeaderManager {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'X-XSS-Protection': '1; mode=block',
-      'Strict-Transport-Security':
-        'max-age=31536000; includeSubDomains; preload',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
       'X-Permitted-Cross-Domain-Policies': 'none',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -41,8 +40,17 @@ class HeaderManager {
       'https:',
       'http://localhost',
       'ws://localhost',
-      'wss://localhost'
+      'wss://localhost',
+      'data:',
+      "'none'",
+      "'strict-dynamic'",
+      "'script'",
+      'dompurify'
     ]);
+  }
+
+  getProfile(req) {
+    return req?.k9shieldProfile || this.config.security?.profiles?.default || {};
   }
 
   applySecurityHeaders(res, req) {
@@ -86,16 +94,15 @@ class HeaderManager {
       });
 
       this.validateSecurityHeaders(res.getHeaders());
-    } catch (e) {
-      this.logger.log(
-        'error',
-        `Failed to apply security headers: ${e.message}`
-      );
+    } catch (error) {
+      this.logger.log('error', `Failed to apply security headers: ${error.message}`);
     }
   }
 
   generateCSP(req) {
     try {
+      const profile = this.getProfile(req);
+      // HTML routes can opt into CSP nonces, while API routes avoid paying that cost.
       const defaultPolicy = {
         'default-src': ["'self'"],
         'script-src': ["'self'", "'strict-dynamic'"],
@@ -118,10 +125,12 @@ class HeaderManager {
         ...this.config.security.csp
       };
 
-      const nonce = this.generateNonce();
-      if (nonce) {
-        defaultPolicy['script-src'].push(`'nonce-${nonce}'`);
-        req.cspNonce = nonce;
+      if (profile.cspNonce) {
+        const nonce = this.generateNonce();
+        if (nonce) {
+          defaultPolicy['script-src'].push(`'nonce-${nonce}'`);
+          req.cspNonce = nonce;
+        }
       }
 
       Object.keys(defaultPolicy).forEach((key) => {
@@ -129,8 +138,7 @@ class HeaderManager {
           defaultPolicy[key] = defaultPolicy[key].filter(
             (value) =>
               this.trustedSources.has(value) ||
-              value.startsWith("'nonce-") ||
-              value === "'strict-dynamic'" ||
+              String(value).startsWith("'nonce-") ||
               (process.env.NODE_ENV === 'development' &&
                 this.unsafeContentDirectives.has(value))
           );
@@ -145,8 +153,8 @@ class HeaderManager {
           return `${key} ${values.join(' ')}`;
         })
         .join('; ');
-    } catch (e) {
-      this.logger.log('error', `Failed to generate CSP: ${e.message}`);
+    } catch (error) {
+      this.logger.log('error', `Failed to generate CSP: ${error.message}`);
       return "default-src 'self'";
     }
   }
@@ -181,10 +189,10 @@ class HeaderManager {
       return Object.entries(defaultPolicy)
         .map(([feature, value]) => `${feature}=${value}`)
         .join(', ');
-    } catch (e) {
+    } catch (error) {
       this.logger.log(
         'error',
-        `Failed to generate Permissions Policy: ${e.message}`
+        `Failed to generate Permissions Policy: ${error.message}`
       );
       return Object.entries(this.config.security.permissions || {})
         .map(([feature, value]) => `${feature}=${value}`)
@@ -222,11 +230,8 @@ class HeaderManager {
       return Object.entries(features)
         .map(([feature, value]) => `${feature} ${value}`)
         .join('; ');
-    } catch (e) {
-      this.logger.log(
-        'error',
-        `Failed to generate Feature Policy: ${e.message}`
-      );
+    } catch (error) {
+      this.logger.log('error', `Failed to generate Feature Policy: ${error.message}`);
       return '';
     }
   }
@@ -234,11 +239,14 @@ class HeaderManager {
   applyCORSHeaders(req, res, headers) {
     try {
       const origin = req.headers.origin;
-      const allowedOrigins = this.config.security.corsOrigin || '*';
+      const allowedOrigins = this.config.security.corsOrigin;
+
+      if (allowedOrigins === undefined || allowedOrigins === null) {
+        return;
+      }
 
       if (allowedOrigins === '*') {
         headers['Access-Control-Allow-Origin'] = '*';
-        // Wildcard origin is incompatible with credentials; omit the header.
       } else if (
         Array.isArray(allowedOrigins) &&
         allowedOrigins.includes(origin)
@@ -252,31 +260,37 @@ class HeaderManager {
         headers['Access-Control-Allow-Methods'] =
           this.config.security.allowedMethods.join(', ');
         headers['Access-Control-Allow-Headers'] =
-          'Content-Type, Authorization, X-Requested-With';
+          'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-K9Shield-Signature';
         headers['Access-Control-Max-Age'] = '86400';
       }
-    } catch (e) {
-      this.logger.log('error', `Failed to apply CORS headers: ${e.message}`);
+    } catch (error) {
+      this.logger.log('error', `Failed to apply CORS headers: ${error.message}`);
     }
   }
 
   applyCacheHeaders(req, res, headers) {
     try {
-      const sensitiveRoutes = ['/api', '/auth', '/admin'];
+      const profile = this.getProfile(req);
+      const cacheStrategy = profile.cacheStrategy || 'default';
+      const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+      const sensitiveRoutes = ['/api', '/auth', '/admin', '/webhooks', '/upload'];
       const isSensitiveRoute = sensitiveRoutes.some((route) =>
         req.path.startsWith(route)
       );
 
-      if (isSensitiveRoute) {
+      // Unsafe methods are never cacheable, even if the route profile is otherwise public.
+      if (!isSafeMethod || cacheStrategy === 'no-store' || isSensitiveRoute) {
         headers['Cache-Control'] =
           'no-store, no-cache, must-revalidate, proxy-revalidate';
-        headers['Pragma'] = 'no-cache';
-        headers['Expires'] = '0';
-      } else {
+        headers.Pragma = 'no-cache';
+        headers.Expires = '0';
+      } else if (cacheStrategy === 'public') {
         headers['Cache-Control'] = 'public, max-age=3600';
+      } else {
+        headers['Cache-Control'] = 'private, no-store';
       }
-    } catch (e) {
-      this.logger.log('error', `Failed to apply cache headers: ${e.message}`);
+    } catch (error) {
+      this.logger.log('error', `Failed to apply cache headers: ${error.message}`);
     }
   }
 
@@ -310,11 +324,8 @@ class HeaderManager {
           "CSP contains 'unsafe-inline' in production"
         );
       }
-    } catch (e) {
-      this.logger.log(
-        'error',
-        `Failed to validate security headers: ${e.message}`
-      );
+    } catch (error) {
+      this.logger.log('error', `Failed to validate security headers: ${error.message}`);
     }
   }
 

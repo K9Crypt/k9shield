@@ -24,8 +24,18 @@ class DataLossPreventionManager {
       passport: (match) => this.maskPassport(match)
     };
 
-    this.encryptionKey = this.resolveEncryptionKey();
+    this.configuredEncryptionKey = this.getConfiguredEncryptionKey(config);
+    this.encryptionKey = this.resolveEncryptionKey(this.configuredEncryptionKey);
     this.encryptor = new k9crypt(this.encryptionKey);
+  }
+
+  getConfiguredEncryptionKey(config = this.config) {
+    return config?.dlp?.encryptionKey || null;
+  }
+
+  createGlobalRegex(pattern) {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    return new RegExp(pattern.source, flags);
   }
 
   scanForSensitiveData(data) {
@@ -36,7 +46,7 @@ class DataLossPreventionManager {
     const detectedData = {};
 
     for (const [type, pattern] of Object.entries(this.sensitivePatterns)) {
-      const matches = data.match(new RegExp(pattern, 'g')) || [];
+      const matches = data.match(this.createGlobalRegex(pattern)) || [];
       if (matches.length > 0) {
         detectedData[type] = matches;
 
@@ -62,14 +72,15 @@ class DataLossPreventionManager {
 
     for (const [type, pattern] of Object.entries(this.sensitivePatterns)) {
       processedData = processedData.replace(
-        new RegExp(pattern, 'g'),
+        this.createGlobalRegex(pattern),
         (match) => {
           return this.maskingOptions[type](match);
         }
       );
     }
 
-    return typeof data === 'string' ? processedData : JSON.parse(processedData);
+    if (typeof data === 'string') return processedData;
+    return JSON.parse(processedData);
   }
 
   async encryptSensitiveData(data) {
@@ -130,22 +141,21 @@ class DataLossPreventionManager {
     );
   }
 
-  resolveEncryptionKey() {
-    const configKey = this.config.dlp?.encryptionKey || process.env.K9SHIELD_DLP_KEY;
+  resolveEncryptionKey(configKey = this.getConfiguredEncryptionKey()) {
     if (configKey) {
-      if (typeof configKey !== 'string' || configKey.length < 64) {
-        throw new Error('K9Shield DLP encryption key must be at least 64 hex characters (32 bytes)');
+      if (
+        typeof configKey !== 'string' ||
+        configKey.length !== 64 ||
+        !/^[0-9a-fA-F]{64}$/.test(configKey)
+      ) {
+        throw new Error('K9Shield DLP encryption key must be exactly 64 hex characters (32 bytes)');
       }
       return configKey;
     }
 
-    // Ephemeral key: encrypted data will not survive restarts; warn loudly.
-    const ephemeral = crypto.randomBytes(32).toString('hex');
-    console.warn(
-      '[K9Shield] WARNING: DLP encryption key not configured. Using ephemeral key; ' +
-      'encrypted data cannot be decrypted after restart. Set config.dlp.encryptionKey or K9SHIELD_DLP_KEY env var.'
-    );
-    return ephemeral;
+    // Generate a runtime-scoped key so DLP helpers work out of the box with zero setup.
+    // Teams that need a fixed application key can still pass config.dlp.encryptionKey.
+    return crypto.randomBytes(32).toString('hex');
   }
 
   generateEncryptionKey() {

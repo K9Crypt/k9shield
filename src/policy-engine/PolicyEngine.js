@@ -1,5 +1,3 @@
-const Rule = require('./Rule');
-
 class PolicyEngine {
   constructor(k9shieldInstance) {
     this.k9shield = k9shieldInstance;
@@ -11,19 +9,25 @@ class PolicyEngine {
   loadRules() {
     const createBlacklistRule = require('./rules/blacklistRule');
     const createWhitelistRule = require('./rules/whitelistRule');
-    const createBypassRouteRule = require('./rules/bypassRouteRule');
     const createDdosRule = require('./rules/ddosRule');
+    const createBypassRouteRule = require('./rules/bypassRouteRule');
+    const createReputationRule = require('./rules/reputationRule');
     const createSecurityPolicyRule = require('./rules/securityPolicyRule');
-    const createRateLimitRule = require('./rules/rateLimitRule');
+    const createBotProtectionRule = require('./rules/botProtectionRule');
+    const createWebhookRule = require('./rules/webhookRule');
     const createCsrfRule = require('./rules/csrfRule');
+    const createRateLimitRule = require('./rules/rateLimitRule');
 
-    this.addRule(createWhitelistRule(this.k9shield));    // priority 200 – whitelist first
-    this.addRule(createBlacklistRule(this.k9shield));    // priority 100 – block known bad IPs before bypass
-    this.addRule(createDdosRule(this.k9shield));         // priority 90  – DDoS check before bypass
-    this.addRule(createBypassRouteRule(this.k9shield));  // priority 85  – bypass only after security gates
-    this.addRule(createSecurityPolicyRule(this.k9shield)); // priority 80
-    this.addRule(createCsrfRule(this.k9shield));         // priority 75  – CSRF for state-changing methods
-    this.addRule(createRateLimitRule(this.k9shield));    // priority 50
+    this.addRule(createWhitelistRule(this.k9shield));
+    this.addRule(createBlacklistRule(this.k9shield));
+    this.addRule(createDdosRule(this.k9shield));
+    this.addRule(createBypassRouteRule(this.k9shield));
+    this.addRule(createReputationRule(this.k9shield));
+    this.addRule(createSecurityPolicyRule(this.k9shield));
+    this.addRule(createBotProtectionRule(this.k9shield));
+    this.addRule(createWebhookRule(this.k9shield));
+    this.addRule(createCsrfRule(this.k9shield));
+    this.addRule(createRateLimitRule(this.k9shield));
 
     this.logger.log(
       'info',
@@ -37,9 +41,22 @@ class PolicyEngine {
   }
 
   async evaluate(context) {
+    const trace = [];
+
     for (const rule of this.rules) {
+      // Record per-rule timings so we can explain and measure why a decision happened.
+      const startedAt = process.hrtime.bigint();
       const result = await rule.evaluate(context);
+      const durationNs = Number(process.hrtime.bigint() - startedAt);
+      trace.push({
+        rule: rule.name,
+        matched: !!result,
+        decision: result?.decision || null,
+        durationNs
+      });
+
       if (result) {
+        context.decisionTrace = trace;
         this.logger.log(
           'debug',
           `Policy Engine: Rule '${rule.name}' triggered. Decision: ${result.decision}`
@@ -48,6 +65,7 @@ class PolicyEngine {
       }
     }
 
+    context.decisionTrace = trace;
     return { decision: 'ALLOW' };
   }
 }
